@@ -581,7 +581,7 @@
     const tbody = document.getElementById("modal-hours-body");
     tbody.innerHTML = "";
     const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-    const nowDay = new Date().toLocaleDateString("en-US", { weekday: "lowercase" });
+    const nowDay = new Date().toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
 
     days.forEach((d) => {
       const dh = store.hours[d];
