@@ -118,6 +118,7 @@ async def geocode_endpoint(
 
 
 @router.get("/stores", response_model=StoreSearchResponse)
+@router.get("/stores/search", response_model=StoreSearchResponse)
 async def search_stores(
     lat: Optional[float] = Query(None, ge=-90.0, le=90.0, description="Origin latitude in degrees"),
     lng: Optional[float] = Query(None, ge=-180.0, le=180.0, description="Origin longitude in degrees"),

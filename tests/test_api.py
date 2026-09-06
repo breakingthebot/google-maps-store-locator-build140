@@ -71,6 +71,16 @@ async def test_api_search_stores_by_address(client: httpx.AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_api_search_stores_endpoint_alias(client: httpx.AsyncClient):
+    """GET /api/stores/search should resolve without 422 integer parsing collision."""
+    res = await client.get("/api/stores/search?lat=37.7749&lng=-122.4194&radius_km=25")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_found"] > 0
+
+
+
+@pytest.mark.asyncio
 async def test_api_get_store_detail(client: httpx.AsyncClient):
     """GET /api/stores/{id} should return complete store profile."""
     res = await client.get("/api/stores/1")
