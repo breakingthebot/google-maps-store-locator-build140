@@ -198,8 +198,8 @@
     <div class="trip-bar-content">
       <div class="trip-bar-info">
         <span class="trip-bar-badge" id="trip-count-badge">0</span>
-        <div>
-          <strong style="font-size: 0.95rem;">Multi-Stop Trip Planner</strong>
+        <div style="min-width: 0; display: flex; align-items: center; gap: 8px;">
+          <strong style="font-size: 0.88rem; white-space: nowrap;">Trip Stops</strong>
           <div id="trip-store-pills" class="trip-pills-container"></div>
         </div>
       </div>
@@ -210,10 +210,10 @@
         <label class="trip-option-label">
           <input type="checkbox" id="trip-optimize" checked /> TSP Optimize
         </label>
-        <button id="btn-plan-trip" class="btn btn-primary" style="padding: 7px 14px; font-weight: 700;">
+        <button id="btn-plan-trip" class="btn btn-primary" style="padding: 6px 14px; font-weight: 700; border-radius: 30px;">
           🚀 Calculate Route
         </button>
-        <button id="btn-clear-trip" class="btn btn-secondary" style="padding: 7px 10px;" title="Clear Trip">
+        <button id="btn-clear-trip" class="btn btn-secondary" style="padding: 6px 10px; border-radius: 30px;" title="Clear Trip">
           Clear
         </button>
       </div>
