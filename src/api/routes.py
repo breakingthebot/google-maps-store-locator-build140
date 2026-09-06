@@ -126,6 +126,12 @@ async def search_stores(
     radius_km: float = Query(25.0, gt=0.0, le=500.0, description="Search radius in kilometers"),
     open_now: bool = Query(False, description="Filter only stores that are currently open"),
     min_rating: Optional[float] = Query(None, ge=0.0, le=5.0, description="Minimum customer rating (0-5)"),
+    rating_45: Optional[bool] = Query(None, description="Filter stores with rating 4.5+"),
+    drive_thru: Optional[bool] = Query(None, description="Filter stores with drive-thru"),
+    curbside_pickup: Optional[bool] = Query(None, description="Filter stores with curbside pickup"),
+    ev_charging: Optional[bool] = Query(None, description="Filter stores with EV charging"),
+    wheelchair_accessible: Optional[bool] = Query(None, description="Filter stores with wheelchair accessibility"),
+    wifi: Optional[bool] = Query(None, description="Filter stores with WiFi"),
     amenity: Optional[str] = Query(None, description="Filter by amenity (drive_thru, curbside_pickup, ev_charging, wifi, wheelchair_accessible)"),
     sort_by: str = Query("distance", pattern="^(distance|rating|name)$", description="Sort order"),
     limit: int = Query(50, ge=1, le=100, description="Maximum stores to return"),
@@ -155,13 +161,30 @@ async def search_stores(
         origin_coords = Coordinates(latitude=settings.default_latitude, longitude=settings.default_longitude)
         resolved_address = "San Francisco, CA, USA"
 
+    effective_min_rating = min_rating
+    if rating_45 and effective_min_rating is None:
+        effective_min_rating = 4.5
+
+    amenities_filter: dict[str, bool] = {}
+    if drive_thru is not None and drive_thru:
+        amenities_filter["drive_thru"] = True
+    if curbside_pickup is not None and curbside_pickup:
+        amenities_filter["curbside_pickup"] = True
+    if ev_charging is not None and ev_charging:
+        amenities_filter["ev_charging"] = True
+    if wheelchair_accessible is not None and wheelchair_accessible:
+        amenities_filter["wheelchair_accessible"] = True
+    if wifi is not None and wifi:
+        amenities_filter["wifi"] = True
+
     results = repo.search_nearby(
         latitude=origin_coords.latitude,
         longitude=origin_coords.longitude,
         radius_km=radius_km,
         open_now=open_now,
-        min_rating=min_rating,
+        min_rating=effective_min_rating,
         amenity=amenity,
+        amenities_filter=amenities_filter if amenities_filter else None,
         sort_by=sort_by,
         limit=limit,
     )

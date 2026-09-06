@@ -131,3 +131,37 @@ async def test_api_create_store(client: httpx.AsyncClient):
     created = res.json()
     assert created["id"] > 0
     assert created["name"] == "Apex Retail - North Beach"
+
+
+@pytest.mark.asyncio
+async def test_api_search_filter_rating(client: httpx.AsyncClient):
+    """GET /api/stores/search with rating_45 or min_rating should filter lower rated stores."""
+    res = await client.get("/api/stores/search?lat=37.7749&lng=-122.4194&radius_km=30&min_rating=4.6")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_found"] > 0
+    for s in data["stores"]:
+        assert s["store"]["rating"] >= 4.6
+
+
+@pytest.mark.asyncio
+async def test_api_search_filter_amenities(client: httpx.AsyncClient):
+    """GET /api/stores/search with drive_thru=true should return only drive-thru equipped stores."""
+    res = await client.get("/api/stores/search?lat=37.7749&lng=-122.4194&radius_km=30&drive_thru=true")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_found"] > 0
+    for s in data["stores"]:
+        assert s["store"]["amenities"]["drive_thru"] is True
+
+
+@pytest.mark.asyncio
+async def test_api_search_filter_multiple_amenities(client: httpx.AsyncClient):
+    """GET /api/stores/search with multiple amenity flags should apply conjunction (AND) filtering."""
+    res = await client.get("/api/stores/search?lat=37.7749&lng=-122.4194&radius_km=30&drive_thru=true&ev_charging=true")
+    assert res.status_code == 200
+    data = res.json()
+    for s in data["stores"]:
+        assert s["store"]["amenities"]["drive_thru"] is True
+        assert s["store"]["amenities"]["ev_charging"] is True
+

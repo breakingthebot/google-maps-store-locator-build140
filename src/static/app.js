@@ -248,9 +248,16 @@
     });
 
     // Append active filter flags
-    Object.keys(state.filters).forEach((k) => {
-      if (state.filters[k]) params.append(k, "true");
-    });
+    if (state.filters.open_now) params.append("open_now", "true");
+    if (state.filters.rating_45) {
+      params.append("min_rating", "4.5");
+      params.append("rating_45", "true");
+    }
+    if (state.filters.drive_thru) params.append("drive_thru", "true");
+    if (state.filters.curbside_pickup) params.append("curbside_pickup", "true");
+    if (state.filters.ev_charging) params.append("ev_charging", "true");
+    if (state.filters.wheelchair_accessible) params.append("wheelchair_accessible", "true");
+    if (state.filters.wifi) params.append("wifi", "true");
 
     try {
       const res = await fetch(`/api/stores/search?${params.toString()}`);
@@ -270,18 +277,31 @@
     }
   }
 
+  function resetAllFilters() {
+    Object.keys(state.filters).forEach((k) => (state.filters[k] = false));
+    document.querySelectorAll(".filter-chip").forEach((chip) => chip.classList.remove("active"));
+    performSearch();
+  }
+
   // Render Store Cards
   function renderStoreList() {
     if (!state.stores || state.stores.length === 0) {
       storeList.innerHTML = `
         <div style="padding: 30px; text-align: center; color: var(--text-muted);">
-          <div style="font-size: 2.5rem; margin-bottom: 8px;">📍</div>
-          <strong>No stores found within ${state.radiusKm} km</strong>
+          <div style="font-size: 2.5rem; margin-bottom: 8px;">🔍</div>
+          <strong style="color: var(--text); font-size: 1rem;">No matching stores found</strong>
           <p style="font-size: 0.85rem; margin-top: 6px;">
-            Try increasing the search radius or resetting amenity filters.
+            No locations within ${state.radiusKm} km match your active filters.
           </p>
+          <button id="btn-reset-filters" class="btn btn-secondary" style="margin-top: 14px; font-size: 0.82rem;">
+            Reset All Filters
+          </button>
         </div>
       `;
+      const btnReset = document.getElementById("btn-reset-filters");
+      if (btnReset) {
+        btnReset.addEventListener("click", resetAllFilters);
+      }
       return;
     }
 

@@ -189,6 +189,7 @@ class StoreRepository:
         open_now: bool = False,
         min_rating: Optional[float] = None,
         amenity: Optional[str] = None,
+        amenities_filter: Optional[dict[str, bool]] = None,
         sort_by: str = "distance",
         limit: int = 50,
     ) -> list[StoreSummary]:
@@ -225,11 +226,22 @@ class StoreRepository:
         for row in rows:
             store = self._row_to_store(row)
 
-            # Check amenity filter if requested
+            # Check single amenity filter if requested (legacy compatibility)
             if amenity:
                 clean_amenity = amenity.strip().lower()
                 amenities_dict = store.amenities.model_dump()
                 if not amenities_dict.get(clean_amenity, False):
+                    continue
+
+            # Check multiple amenity filters if requested (e.g. drive_thru, wifi, ev_charging)
+            if amenities_filter:
+                amenities_dict = store.amenities.model_dump()
+                mismatch = False
+                for req_key, req_val in amenities_filter.items():
+                    if req_val and not amenities_dict.get(req_key, False):
+                        mismatch = True
+                        break
+                if mismatch:
                     continue
 
             # Calculate exact Haversine distance
@@ -329,7 +341,7 @@ class StoreRepository:
                     "thursday": {"open_time": "09:00", "close_time": "20:00", "is_closed": False},
                     "friday": {"open_time": "09:00", "close_time": "21:00", "is_closed": False},
                     "saturday": {"open_time": "09:00", "close_time": "21:00", "is_closed": False},
-                    "sunday": {"open_time": "10:00", "close_time": "18:00", "is_closed": False},
+                    "sunday": {"open_time": "12:30", "close_time": "18:00", "is_closed": False},
                 },
                 "reviews": [
                     {"author_name": "Sophia Chen", "rating": 5.0, "text": "Vibrant neighborhood atmosphere and wonderful inventory selection.", "relative_time_description": "3 days ago"}
