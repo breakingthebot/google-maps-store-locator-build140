@@ -18,6 +18,7 @@ class WaypointNode(BaseModel):
     address: str = Field(..., description="Street or formatted address")
     coordinates: Coordinates = Field(..., description="Latitude and Longitude")
     store_id: Optional[int] = Field(None, description="Store ID if this node represents a store")
+    phone: Optional[str] = Field(None, description="Store contact phone number if available")
     is_origin: bool = Field(False, description="True if this is the trip start point")
     is_destination: bool = Field(False, description="True if this is the trip end point")
 
@@ -77,3 +78,9 @@ class TripPlanResponse(BaseModel):
     total_duration_text: str = Field(..., description="Formatted total duration string")
     overview_polyline: str = Field(..., description="Composite Google-encoded polyline covering the entire trip")
     savings: Optional[TripSavings] = Field(None, description="Savings metrics if route was optimized")
+    google_maps_url: Optional[str] = Field(None, description="Universal Google Maps mobile turn-by-turn navigation URL")
+
+
+# Model alias for convenience
+TripPlan = TripPlanResponse
+

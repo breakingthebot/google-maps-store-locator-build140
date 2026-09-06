@@ -170,6 +170,91 @@
         if (e.target === tripModal) tripModal.classList.remove("open");
       });
     }
+
+    // Export and Print Handlers
+    const tripBtnQr = document.getElementById("trip-btn-qr");
+    const qrPopover = document.getElementById("qr-popover");
+    const btnCloseQr = document.getElementById("btn-close-qr");
+    const qrCanvasContainer = document.getElementById("qr-canvas-container");
+    const qrUrlPreview = document.getElementById("qr-url-preview");
+    const tripBtnExportGpx = document.getElementById("trip-btn-export-gpx");
+    const tripBtnExportCsv = document.getElementById("trip-btn-export-csv");
+    const tripBtnPrint = document.getElementById("trip-btn-print");
+
+    if (tripBtnQr) {
+      tripBtnQr.addEventListener("click", () => {
+        if (!state.activeTripPlan || !state.activeTripPlan.google_maps_url) return;
+        const url = state.activeTripPlan.google_maps_url;
+        qrUrlPreview.textContent = url;
+        qrCanvasContainer.innerHTML = `
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}"
+               alt="Google Maps QR Code" width="180" height="180" style="display: block; border-radius: 4px;" />
+        `;
+        qrPopover.classList.remove("hidden");
+      });
+    }
+
+    if (btnCloseQr) {
+      btnCloseQr.addEventListener("click", () => {
+        qrPopover.classList.add("hidden");
+      });
+    }
+
+    if (tripBtnExportGpx) {
+      tripBtnExportGpx.addEventListener("click", async () => {
+        if (!state.activeTripPlan) return;
+        try {
+          const res = await fetch("/api/trip/export/gpx", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(state.activeTripPlan),
+          });
+          if (!res.ok) throw new Error("GPX export failed");
+          const blob = await res.blob();
+          const downloadUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = `store_trip_route_${Date.now()}.gpx`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(downloadUrl);
+        } catch (err) {
+          alert(`Export failed: ${err.message}`);
+        }
+      });
+    }
+
+    if (tripBtnExportCsv) {
+      tripBtnExportCsv.addEventListener("click", async () => {
+        if (!state.activeTripPlan) return;
+        try {
+          const res = await fetch("/api/trip/export/csv", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(state.activeTripPlan),
+          });
+          if (!res.ok) throw new Error("CSV export failed");
+          const blob = await res.blob();
+          const downloadUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = `driver_delivery_manifest_${Date.now()}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(downloadUrl);
+        } catch (err) {
+          alert(`Export failed: ${err.message}`);
+        }
+      });
+    }
+
+    if (tripBtnPrint) {
+      tripBtnPrint.addEventListener("click", () => {
+        window.print();
+      });
+    }
   }
 
   // Geolocation handler
@@ -552,6 +637,12 @@
     tripStatDuration.textContent = plan.total_duration_text;
     tripStatStops.textContent = `${plan.stops.length} stops (${plan.legs.length} legs)`;
     tripStatMode.textContent = plan.travel_mode.charAt(0).toUpperCase() + plan.travel_mode.slice(1);
+
+    // Update Universal Google Maps Navigation Link
+    const tripBtnGoogleMaps = document.getElementById("trip-btn-google-maps");
+    if (tripBtnGoogleMaps && plan.google_maps_url) {
+      tripBtnGoogleMaps.href = plan.google_maps_url;
+    }
 
     // Sequential Stops Timeline
     tripStopsTimeline.innerHTML = "";

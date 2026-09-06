@@ -260,6 +260,39 @@
           </div>
         </div>
 
+        <!-- Export & Navigation Actions Toolbar -->
+        <div class="trip-export-toolbar">
+          <a id="trip-btn-google-maps" class="btn btn-export-gmaps" href="#" target="_blank" rel="noopener noreferrer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            📱 Open in Google Maps
+          </a>
+          <button id="trip-btn-qr" class="btn btn-export-secondary" title="Scan with phone camera to navigate">
+            📷 QR Handoff
+          </button>
+          <button id="trip-btn-export-gpx" class="btn btn-export-secondary" title="Download GPX 1.1 route file for GPS units">
+            💾 Download GPX
+          </button>
+          <button id="trip-btn-export-csv" class="btn btn-export-secondary" title="Download delivery driver manifest CSV">
+            📄 Driver Manifest (CSV)
+          </button>
+          <button id="trip-btn-print" class="btn btn-export-secondary" title="Print physical route manifest slip">
+            🖨️ Print Route Slip
+          </button>
+        </div>
+
+        <!-- Phone QR Modal / Popover -->
+        <div id="qr-popover" class="qr-popover hidden">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h4 style="font-size: 0.95rem; font-weight: 700; margin: 0;">Scan to Navigate on Phone</h4>
+            <button id="btn-close-qr" style="background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+            Point your smartphone camera at this QR code to launch live GPS turn-by-turn navigation in the Google Maps mobile app.
+          </p>
+          <div id="qr-canvas-container" style="display: flex; justify-content: center; padding: 12px; background: white; border-radius: 8px; border: 1px solid var(--border);"></div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); text-align: center; margin-top: 8px; word-break: break-all;" id="qr-url-preview"></div>
+        </div>
+
         <!-- Sequential Stops Schedule -->
         <h4 style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-top: 15px; margin-bottom: 8px;">
           Optimized Visit Schedule

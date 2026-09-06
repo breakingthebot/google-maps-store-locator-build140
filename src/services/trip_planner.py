@@ -21,6 +21,7 @@ from src.models.trip import (
 from src.services.google_maps import GoogleMapsService
 from src.services.mock_maps import MockGoogleMapsService
 from src.services.store_repository import StoreRepository
+from src.services.trip_exporter import TripExporter
 from src.utils.distance import haversine_distance_km, haversine_distance_miles
 from src.utils.optimizer import compute_distance_matrix, compute_tour_distance, optimize_route
 from src.utils.polyline import decode_polyline, encode_polyline
@@ -273,7 +274,7 @@ class TripPlannerService:
                 estimated_minutes_saved=mins_saved,
             )
 
-        return TripPlanResponse(
+        plan_res = TripPlanResponse(
             origin_label=origin_label,
             destination_label=destination_label,
             round_trip=request.round_trip,
@@ -290,3 +291,5 @@ class TripPlannerService:
             overview_polyline=overview_polyline,
             savings=savings,
         )
+        plan_res.google_maps_url = TripExporter.generate_google_maps_url(plan_res)
+        return plan_res

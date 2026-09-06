@@ -4,7 +4,7 @@
 # Created: 2026-09-06
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from src.config import settings
 from src.models.directions import DirectionsResult, TravelMode
@@ -13,6 +13,7 @@ from src.models.store import Store, StoreCreate, StoreSummary
 from src.models.trip import TripPlanRequest, TripPlanResponse
 from src.services.google_maps import GoogleMapsService
 from src.services.store_repository import StoreRepository
+from src.services.trip_exporter import TripExporter
 from src.services.trip_planner import TripPlannerService
 
 router = APIRouter(prefix="/api", tags=["Store Locator"])
@@ -309,3 +310,39 @@ async def preview_multi_stop_trip(
         return await planner.plan_trip(req)
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))
+
+
+@router.post("/trip/export/gpx")
+async def export_trip_gpx(
+    plan: TripPlanResponse,
+) -> Response:
+    """Export a calculated TripPlanResponse as GPS Exchange Format (GPX 1.1) XML file."""
+    gpx_xml = TripExporter.generate_gpx(plan)
+    return Response(
+        content=gpx_xml,
+        media_type="application/gpx+xml",
+        headers={"Content-Disposition": 'attachment; filename="route.gpx"'},
+    )
+
+
+@router.post("/trip/export/csv")
+async def export_trip_csv(
+    plan: TripPlanResponse,
+) -> Response:
+    """Export a calculated TripPlanResponse as a CSV driver delivery manifest."""
+    csv_text = TripExporter.generate_csv(plan)
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="driver_manifest.csv"'},
+    )
+
+
+@router.post("/trip/export/url")
+async def export_trip_url(
+    plan: TripPlanResponse,
+) -> dict:
+    """Generate universal cross-platform Google Maps mobile navigation URL."""
+    url = TripExporter.generate_google_maps_url(plan)
+    return {"google_maps_url": url}
+

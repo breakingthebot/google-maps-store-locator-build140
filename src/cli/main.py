@@ -15,6 +15,7 @@ from src.models.geo import Coordinates
 from src.models.trip import TripPlanRequest
 from src.services.google_maps import GoogleMapsService
 from src.services.store_repository import StoreRepository
+from src.services.trip_exporter import TripExporter
 from src.services.trip_planner import TripPlannerService
 from src.utils.hours import format_time_12hr
 
@@ -296,7 +297,19 @@ def list_stores(limit: int) -> None:
     show_default=True,
     help="Travel mode",
 )
-def plan_trip_cli(origin: str, stores: tuple[int, ...], round_trip: bool, optimize: bool, mode: str) -> None:
+@click.option("--export-gpx", type=click.Path(writable=True), default=None, help="File path to save route as GPX 1.1")
+@click.option("--export-csv", type=click.Path(writable=True), default=None, help="File path to save manifest as CSV")
+@click.option("--show-url", is_flag=True, default=True, help="Display universal Google Maps navigation deep link")
+def plan_trip_cli(
+    origin: str,
+    stores: tuple[int, ...],
+    round_trip: bool,
+    optimize: bool,
+    mode: str,
+    export_gpx: Optional[str],
+    export_csv: Optional[str],
+    show_url: bool,
+) -> None:
     """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP sequencing."""
     if len(stores) < 2:
         console.print("[red]Error:[/red] Trip planning requires at least 2 store destinations (-s <id> -s <id>).")
@@ -377,6 +390,28 @@ def plan_trip_cli(origin: str, stores: tuple[int, ...], round_trip: bool, optimi
         )
 
     console.print(legs_table)
+
+    if show_url and result.google_maps_url:
+        console.print(
+            Panel(
+                f"[bold underline cyan]{result.google_maps_url}[/bold underline cyan]",
+                title="Universal Google Maps Mobile Navigation URL",
+                border_style="blue",
+            )
+        )
+
+    if export_gpx:
+        gpx_data = TripExporter.generate_gpx(result)
+        with open(export_gpx, "w", encoding="utf-8") as f:
+            f.write(gpx_data)
+        console.print(f"[bold green]Exported GPX 1.1 route file:[/bold green] {export_gpx}")
+
+    if export_csv:
+        csv_data = TripExporter.generate_csv(result)
+        with open(export_csv, "w", encoding="utf-8") as f:
+            f.write(csv_data)
+        console.print(f"[bold green]Exported Driver CSV manifest:[/bold green] {export_csv}")
+
     console.print(f"\n[dim]Overview Polyline ({len(result.overview_polyline)} chars):[/dim] [italic]{result.overview_polyline[:40]}...[/italic]\n")
 
 

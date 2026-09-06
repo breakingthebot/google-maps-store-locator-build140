@@ -59,4 +59,41 @@ def test_cli_trip():
     assert "Optimized Trip Overview" in result.output
     assert "Sequential Stop Schedule" in result.output
     assert "Leg-by-Leg Route Segments" in result.output
+    assert "Universal Google Maps Mobile Navigation URL" in result.output
+
+
+def test_cli_trip_export():
+    """CLI trip command with export flags should write GPX and CSV files to disk."""
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        gpx_file = os.path.join(tmpdir, "test_route.gpx")
+        csv_file = os.path.join(tmpdir, "test_manifest.csv")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "trip",
+                "--origin", "Market St",
+                "-s", "1",
+                "-s", "3",
+                "--export-gpx", gpx_file,
+                "--export-csv", csv_file,
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Exported GPX 1.1 route file" in result.output
+        assert "Exported Driver CSV manifest" in result.output
+
+        with open(gpx_file, "r", encoding="utf-8") as f:
+            content = f.read()
+            assert "<gpx version=\"1.1\"" in content
+
+        with open(csv_file, "r", encoding="utf-8") as f:
+            content = f.read()
+            assert "Stop #" in content
+
+
 

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-06
+
+### Added
+- **Multi-Platform Route Export Engine** (`src/services/trip_exporter.py`):
+  - Added `TripExporter` service generating official Google Maps Universal Cross-Platform Navigation URLs (`https://www.google.com/maps/dir/?api=1&...`) with origin, destination, intermediate waypoints, and travel mode.
+  - Implemented GPS Exchange Format (GPX 1.1) XML serialization with metadata, `<wpt>` waypoint nodes, and `<rte>` route elements compatible with Garmin units, GPS watches, OsmAnd, and car infotainment systems.
+  - Implemented tabular CSV driver delivery manifest generation containing sequence numbers, stop types, store profiles, phone contacts, leg distances, drive durations, and physical signature blanks.
+- **Route Export REST Endpoints** (`src/api/routes.py`):
+  - `POST /api/trip/export/gpx`: Returns downloadable `route.gpx` with `application/gpx+xml` media type and attachment headers.
+  - `POST /api/trip/export/csv`: Returns downloadable `driver_manifest.csv` with `text/csv` media type and attachment headers.
+  - `POST /api/trip/export/url`: Returns serialized JSON with the Google Maps navigation deep link.
+- **CLI Export Capabilities** (`src/cli/main.py`):
+  - Extended `store-locator trip` command with `--export-gpx <path>`, `--export-csv <path>`, and `--show-url` flags for automated route serialization directly to disk.
+- **Frontend Export & Print Actions** (`src/static/index.html`, `src/static/styles.css`, `src/static/app.js`):
+  - Added Export Toolbar inside the Multi-Stop Itinerary Modal featuring:
+    - `📱 Open in Google Maps`: 1-click mobile handoff launching native Google Maps app with turn-by-turn navigation.
+    - `📷 QR Handoff`: Dynamic popover generating a camera-scannable QR code for instant mobile transfer.
+    - `💾 Download GPX`: 1-click download of `.gpx` route files for standalone GPS devices.
+    - `📄 Driver Manifest (CSV)`: 1-click export of driver delivery manifests.
+    - `🖨️ Print Route Slip`: Dedicated physical print stylesheet (`@media print`) rendering clean delivery manifests with driver check-off blanks.
+- **Filter Conjunction & Rating/Amenity Enhancements** (`src/api/routes.py`, `src/services/store_repository.py`, `src/static/app.js`):
+  - Added multi-amenity conjunction (AND) filtering across `drive_thru`, `curbside_pickup`, `ev_charging`, `wheelchair_accessible`, and `wifi`.
+  - Added automatic mapping of `rating_45` to `min_rating=4.5`.
+  - Added interactive "Reset All Filters" recovery action when active filters yield 0 results.
+- **Automated Tests** (`tests/test_trip_exporter.py`, `tests/test_cli.py`, `tests/test_api.py`):
+  - Added 12 new automated test cases verifying GPX XML parsing, CSV formatting, Google Maps deep-link schemas, export REST endpoints, and CLI export flags, bringing total passing test suite to 68 tests.
+
 ## [1.1.0] - 2026-09-06
 
 ### Added

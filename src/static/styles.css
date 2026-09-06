@@ -910,3 +910,111 @@ header {
   font-weight: 700;
 }
 
+/* Multi-Stop Export Toolbar & Actions */
+.trip-export-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.btn-export-gmaps {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1a73e8;
+  color: white !important;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.btn-export-gmaps:hover {
+  background: #1557b0;
+}
+
+.btn-export-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-export-secondary:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+/* QR Code Popover */
+.qr-popover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  padding: 18px;
+  z-index: 1001;
+  width: 320px;
+}
+
+.qr-popover.hidden {
+  display: none !important;
+}
+
+/* Print Styles for Physical Route Manifest */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #trip-modal,
+  #trip-modal .modal-card,
+  #trip-modal .modal-card * {
+    visibility: visible;
+  }
+  #trip-modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+  }
+  #trip-modal .modal-card {
+    max-width: 100%;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+  .trip-export-toolbar,
+  #btn-close-trip-modal,
+  .qr-popover {
+    display: none !important;
+  }
+  .timeline-item {
+    page-break-inside: avoid;
+  }
+  .leg-card {
+    page-break-inside: avoid;
+  }
+}
+
+
