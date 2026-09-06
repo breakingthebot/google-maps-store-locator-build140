@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apex Retail — Store Locator & Directions</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z'/></svg>" />
+</head>
+<body>
+  <!-- Header Bar -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"></path>
+          <circle cx="12" cy="9" r="2.5"></circle>
+        </svg>
+      </div>
+      <span>Apex Retail Store Locator</span>
+    </div>
+
+    <!-- Search input & Geolocation -->
+    <div class="search-bar-container">
+      <div class="search-input-wrapper">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          type="text"
+          id="search-input"
+          class="search-input"
+          placeholder="Search by city, address, or ZIP (e.g. 'San Francisco', 'Mission', '94103', 'New York')..."
+          autocomplete="off"
+        />
+      </div>
+      <button id="btn-search" class="btn btn-primary" title="Search location">Search</button>
+      <button id="btn-locate-me" class="btn btn-secondary" title="Use current GPS location">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polygon points="12 2 15 8 12 6 9 8 12 2"></polygon>
+        </svg>
+        <span>Locate Me</span>
+      </button>
+    </div>
+
+    <!-- Provider Telemetry Badge -->
+    <div class="header-meta">
+      <div id="provider-badge" class="provider-badge">
+        <span id="provider-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+        <span id="provider-name">Initializing...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter & Controls Bar -->
+  <div class="filters-bar">
+    <div class="filter-chip" id="chip-open-now" data-filter="open_now">
+      <span>🕒</span> Open Now
+    </div>
+    <div class="filter-chip" id="chip-rating" data-filter="rating_45">
+      <span>★</span> 4.5+ Rating
+    </div>
+    <div class="filter-chip" id="chip-drive-thru" data-filter="drive_thru">
+      <span>🚗</span> Drive-Thru
+    </div>
+    <div class="filter-chip" id="chip-curbside" data-filter="curbside_pickup">
+      <span>📦</span> Curbside Pickup
+    </div>
+    <div class="filter-chip" id="chip-ev" data-filter="ev_charging">
+      <span>⚡</span> EV Charging
+    </div>
+    <div class="filter-chip" id="chip-wheelchair" data-filter="wheelchair_accessible">
+      <span>♿</span> Accessible
+    </div>
+    <div class="filter-chip" id="chip-wifi" data-filter="wifi">
+      <span>📶</span> Free WiFi
+    </div>
+
+    <!-- Radius dropdown -->
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <label for="radius-select" style="font-weight: 600; color: var(--text-muted);">Radius:</label>
+      <select id="radius-select" class="filter-select">
+        <option value="10">10 km (~6 mi)</option>
+        <option value="25" selected>25 km (~15 mi)</option>
+        <option value="50">50 km (~31 mi)</option>
+        <option value="100">100 km (~62 mi)</option>
+      </select>
+
+      <label for="sort-select" style="font-weight: 600; color: var(--text-muted); margin-left: 8px;">Sort:</label>
+      <select id="sort-select" class="filter-select">
+        <option value="distance" selected>Distance (Nearest)</option>
+        <option value="rating">Customer Rating</option>
+        <option value="name">Store Name (A-Z)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Main View Container -->
+  <main class="main-container">
+    <!-- Sidebar: Store Card Results -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2 id="results-count">Locations nearby</h2>
+        <span id="results-origin" style="font-size: 0.8rem; color: var(--text-muted); max-width: 200px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;"></span>
+      </div>
+      <div id="store-list" class="store-list">
+        <!-- Rendered store cards -->
+      </div>
+    </aside>
+
+    <!-- Map Canvas Container -->
+    <section class="map-container">
+      <!-- Container for Google Maps or SVG Geospatial Canvas fallback -->
+      <div id="map-target" style="width: 100%; height: 100%;">
+        <!-- Interactive Map canvas rendered here -->
+      </div>
+
+      <!-- Directions Drawer Overlay -->
+      <div id="directions-drawer" class="directions-drawer">
+        <div class="directions-header">
+          <div>
+            <h3 style="font-size: 1.05rem; font-weight: 700;">Route Directions</h3>
+            <span id="directions-mode-title" style="font-size: 0.8rem; opacity: 0.9;">Driving Route</span>
+          </div>
+          <button id="btn-close-directions" style="background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem;">&times;</button>
+        </div>
+
+        <div class="directions-summary">
+          <div>
+            <div id="directions-distance" style="font-weight: 700; font-size: 1.1rem; color: var(--primary);">-- mi</div>
+            <div id="directions-duration" style="font-size: 0.85rem; color: var(--text-muted);">Estimated: -- mins</div>
+          </div>
+          <div style="display: flex; gap: 4px;">
+            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" data-mode="driving">🚗 Drive</button>
+            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" data-mode="walking">🚶 Walk</button>
+            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" data-mode="bicycling">🚲 Bike</button>
+          </div>
+        </div>
+
+        <div id="directions-steps" class="directions-steps-list">
+          <!-- Turn-by-turn routing steps -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Store Details Modal Dialog -->
+  <div id="store-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="modal-store-name" style="font-size: 1.25rem; font-weight: 700;">Store Name</h2>
+          <span id="modal-store-brand" style="font-size: 0.85rem; color: var(--text-muted);">Apex Retail Flagship</span>
+        </div>
+        <button id="btn-close-modal" style="background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px;">Location & Contact</h4>
+          <p id="modal-store-address" style="font-size: 0.95rem; margin-bottom: 4px;"></p>
+          <p id="modal-store-phone" style="font-size: 0.85rem; color: var(--primary);"></p>
+        </div>
+
+        <div>
+          <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">Weekly Operating Hours</h4>
+          <table class="hours-table">
+            <tbody id="modal-hours-body">
+              <!-- Weekly schedule injected here -->
+            </tbody>
+          </table>
+        </div>
+
+        <div>
+          <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">Available Amenities</h4>
+          <div id="modal-amenities" class="amenity-tags">
+            <!-- Amenities pills -->
+          </div>
+        </div>
+
+        <div>
+          <h4 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">Verified Customer Reviews</h4>
+          <div id="modal-reviews">
+            <!-- Customer reviews -->
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <button id="modal-btn-directions" class="btn btn-primary" style="flex: 1;">Get Turn-by-Turn Directions</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
