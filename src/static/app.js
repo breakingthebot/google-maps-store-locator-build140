@@ -1,5 +1,6 @@
 // src/static/app.js - Frontend application controller and interactive map renderer
-// Connects to: /api/stores, /api/directions, /api/geocode, /api/health
+// Connects to: /api/stores, /api/directions, /api/geocode, /api/health, /api/trip/plan
+// Created: 2026-09-06
 
 (function () {
   'use strict';
@@ -22,6 +23,9 @@
       wheelchair_accessible: false,
       wifi: false,
     },
+    // Multi-Stop Trip Planner State
+    tripStoreIds: [],
+    activeTripPlan: null,
     googleMapInstance: null,
     googleMarkers: [],
     googleDirectionsRenderer: null,
@@ -48,6 +52,26 @@
   const directionsModeTitle = document.getElementById("directions-mode-title");
   const storeModal = document.getElementById("store-modal");
   const btnCloseModal = document.getElementById("btn-close-modal");
+
+  // Trip Planner DOM Elements
+  const tripBar = document.getElementById("trip-bar");
+  const tripCountBadge = document.getElementById("trip-count-badge");
+  const tripStorePills = document.getElementById("trip-store-pills");
+  const btnPlanTrip = document.getElementById("btn-plan-trip");
+  const btnClearTrip = document.getElementById("btn-clear-trip");
+  const tripModal = document.getElementById("trip-modal");
+  const btnCloseTripModal = document.getElementById("btn-close-trip-modal");
+  const tripRoundTrip = document.getElementById("trip-round-trip");
+  const tripOptimize = document.getElementById("trip-optimize");
+  const tripSavingsBanner = document.getElementById("trip-savings-banner");
+  const tripSavingsTitle = document.getElementById("trip-savings-title");
+  const tripSavingsDesc = document.getElementById("trip-savings-desc");
+  const tripStatDistance = document.getElementById("trip-stat-distance");
+  const tripStatDuration = document.getElementById("trip-stat-duration");
+  const tripStatStops = document.getElementById("trip-stat-stops");
+  const tripStatMode = document.getElementById("trip-stat-mode");
+  const tripStopsTimeline = document.getElementById("trip-stops-timeline");
+  const tripLegsContainer = document.getElementById("trip-legs-container");
 
   // Initialize
   async function init() {
@@ -101,19 +125,13 @@
     document.querySelectorAll(".filter-chip").forEach((chip) => {
       chip.addEventListener("click", () => {
         const filterKey = chip.getAttribute("data-filter");
-        chip.classList.toggle("active");
-        state.filters[filterKey] = chip.classList.contains("active");
+        state.filters[filterKey] = !state.filters[filterKey];
+        chip.classList.toggle("active", state.filters[filterKey]);
         performSearch();
       });
     });
 
-    btnCloseDirections.addEventListener("click", () => {
-      directionsDrawer.classList.remove("open");
-      state.activeDirections = null;
-      renderMap();
-    });
-
-    // Travel mode switcher in directions drawer
+    // Travel Mode Buttons
     document.querySelectorAll("[data-mode]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const mode = btn.getAttribute("data-mode");
@@ -124,129 +142,143 @@
       });
     });
 
+    // Modals & Drawer Closes
+    btnCloseDirections.addEventListener("click", () => {
+      directionsDrawer.classList.remove("open");
+      state.activeDirections = null;
+      renderMap();
+    });
+
     btnCloseModal.addEventListener("click", () => {
       storeModal.classList.remove("open");
     });
 
     storeModal.addEventListener("click", (e) => {
-      if (e.target === storeModal) {
-        storeModal.classList.remove("open");
-      }
+      if (e.target === storeModal) storeModal.classList.remove("open");
     });
 
-    document.getElementById("modal-btn-directions").addEventListener("click", () => {
-      storeModal.classList.remove("open");
-      if (state.selectedStoreId) {
-        fetchDirections(state.selectedStoreId, state.currentTravelMode);
-      }
-    });
-  }
-
-  // Perform Store Search
-  async function performSearch() {
-    storeList.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">Finding nearest locations...</div>`;
-
-    const params = new URLSearchParams({
-      lat: state.origin.lat,
-      lng: state.origin.lng,
-      radius_km: state.radiusKm,
-      sort_by: state.sortBy,
-      open_now: state.filters.open_now,
-    });
-
-    if (state.filters.rating_45) {
-      params.append("min_rating", "4.5");
+    // Trip Planner Listeners
+    if (btnPlanTrip) btnPlanTrip.addEventListener("click", executeTripPlan);
+    if (btnClearTrip) btnClearTrip.addEventListener("click", clearTripPlanner);
+    if (btnCloseTripModal) {
+      btnCloseTripModal.addEventListener("click", () => {
+        tripModal.classList.remove("open");
+      });
     }
-
-    // Amenity filters
-    const amenityKeys = ["drive_thru", "curbside_pickup", "ev_charging", "wheelchair_accessible", "wifi"];
-    for (const k of amenityKeys) {
-      if (state.filters[k]) {
-        params.append("amenity", k);
-        break; // API handles single amenity filter parameter per query
-      }
-    }
-
-    try {
-      const res = await fetch(`/api/stores?${params.toString()}`);
-      if (!res.ok) throw new Error("Search request failed");
-      const data = await res.json();
-
-      state.stores = data.stores;
-      resultsCount.textContent = `${data.total_found} locations found`;
-      resultsOrigin.textContent = `near ${data.search_address}`;
-
-      renderStoreCards();
-      renderMap();
-    } catch (err) {
-      console.error("Search failed:", err);
-      storeList.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--danger);">Failed to load store locations. Please try again.</div>`;
+    if (tripModal) {
+      tripModal.addEventListener("click", (e) => {
+        if (e.target === tripModal) tripModal.classList.remove("open");
+      });
     }
   }
 
-  // Handle Search Input Geocoding
-  async function handleSearchInput() {
-    const query = searchInput.value.trim();
-    if (!query) return;
-
-    try {
-      const res = await fetch(`/api/geocode?address=${encodeURIComponent(query)}`);
-      if (!res.ok) {
-        alert(`Location "${query}" could not be found. Please try another address or city.`);
-        return;
-      }
-      const geo = await res.json();
-      state.origin = {
-        lat: geo.coordinates.latitude,
-        lng: geo.coordinates.longitude,
-        name: geo.formatted_address,
-      };
-      performSearch();
-    } catch (err) {
-      console.error("Geocoding failed:", err);
-    }
-  }
-
-  // Handle HTML5 Geolocation
+  // Geolocation handler
   function handleLocateMe() {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser.");
       return;
     }
-
     btnLocateMe.disabled = true;
-    btnLocateMe.querySelector("span").textContent = "Locating...";
+    btnLocateMe.innerHTML = `<span>Locating...</span>`;
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         btnLocateMe.disabled = false;
-        btnLocateMe.querySelector("span").textContent = "Locate Me";
+        btnLocateMe.innerHTML = `<span>Locate Me</span>`;
         state.origin = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          name: "My Current Location",
+          name: "Current Location",
         };
-        performSearch();
+        searchInput.value = "Current Location";
+        await performSearch();
       },
       (err) => {
         btnLocateMe.disabled = false;
-        btnLocateMe.querySelector("span").textContent = "Locate Me";
-        console.warn("Geolocation denied or error:", err);
-        alert("Unable to retrieve GPS coordinates. Defaulting to San Francisco.");
+        btnLocateMe.innerHTML = `<span>Locate Me</span>`;
+        console.warn("Geolocation denied/failed, falling back to default.", err);
+        alert("Could not access your location. Searching with default location.");
+        performSearch();
       },
       { timeout: 8000 }
     );
   }
 
-  // Render Sidebar Store Cards
-  function renderStoreCards() {
+  // Search input handler
+  async function handleSearchInput() {
+    const q = searchInput.value.trim();
+    if (!q) return;
+
+    btnSearch.disabled = true;
+    btnSearch.textContent = "Searching...";
+
+    try {
+      const res = await fetch(`/api/geocode?address=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const geo = await res.json();
+        state.origin = {
+          lat: geo.coordinates.latitude,
+          lng: geo.coordinates.longitude,
+          name: geo.formatted_address,
+        };
+      } else {
+        console.warn("Geocode query unmatched; server will resolve coordinate fallback.");
+        state.origin.name = q;
+      }
+      await performSearch();
+    } catch (err) {
+      console.error("Geocoding error:", err);
+    } finally {
+      btnSearch.disabled = false;
+      btnSearch.textContent = "Search";
+    }
+  }
+
+  // Perform Store Proximity Search
+  async function performSearch() {
+    resultsCount.textContent = "Searching stores...";
+    resultsOrigin.textContent = `from ${state.origin.name}`;
+
+    const params = new URLSearchParams({
+      lat: state.origin.lat.toString(),
+      lng: state.origin.lng.toString(),
+      radius_km: state.radiusKm.toString(),
+      origin_name: state.origin.name,
+      sort_by: state.sortBy,
+    });
+
+    // Append active filter flags
+    Object.keys(state.filters).forEach((k) => {
+      if (state.filters[k]) params.append(k, "true");
+    });
+
+    try {
+      const res = await fetch(`/api/stores/search?${params.toString()}`);
+      if (!res.ok) throw new Error("Search failed");
+      const data = await res.json();
+      state.stores = data.stores;
+
+      resultsCount.textContent = `${data.total_found} ${data.total_found === 1 ? "location" : "locations"} nearby`;
+      resultsOrigin.textContent = `near ${data.search_address}`;
+
+      renderStoreList();
+      renderMap();
+    } catch (err) {
+      console.error("Error fetching stores:", err);
+      resultsCount.textContent = "Error finding stores";
+      storeList.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--danger);">Failed to load store locations.</div>`;
+    }
+  }
+
+  // Render Store Cards
+  function renderStoreList() {
     if (!state.stores || state.stores.length === 0) {
       storeList.innerHTML = `
-        <div style="padding: 40px 20px; text-align: center;">
-          <div style="font-size: 2.5rem; margin-bottom: 12px;">🏪</div>
-          <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 6px;">No stores found</h3>
-          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
-            No stores match your search within ${state.radiusKm} km. Try expanding your search radius or clearing filter chips.
+        <div style="padding: 30px; text-align: center; color: var(--text-muted);">
+          <div style="font-size: 2.5rem; margin-bottom: 8px;">📍</div>
+          <strong>No stores found within ${state.radiusKm} km</strong>
+          <p style="font-size: 0.85rem; margin-top: 6px;">
+            Try increasing the search radius or resetting amenity filters.
           </p>
         </div>
       `;
@@ -257,6 +289,7 @@
     state.stores.forEach((item, index) => {
       const store = item.store;
       const isSelected = store.id === state.selectedStoreId;
+      const isInTrip = state.tripStoreIds.includes(store.id);
 
       const card = document.createElement("div");
       card.className = `store-card ${isSelected ? "selected" : ""}`;
@@ -291,8 +324,10 @@
         </div>
         <div class="card-actions">
           <button class="btn-card primary" data-action="directions" data-id="${store.id}">Directions</button>
-          <button class="btn-card" data-action="details" data-id="${store.id}">View Hours</button>
-          ${store.phone ? `<a href="tel:${escapeHtml(store.phone)}" class="btn-card" style="text-decoration: none;" title="Call Store">📞 Call</a>` : ""}
+          <button class="btn-trip-toggle ${isInTrip ? "in-trip" : ""}" data-action="toggle-trip" data-id="${store.id}">
+            ${isInTrip ? "✓ In Trip" : "+ Trip"}
+          </button>
+          <button class="btn-card" data-action="details" data-id="${store.id}">Hours</button>
         </div>
       `;
 
@@ -307,6 +342,11 @@
         e.stopPropagation();
         selectStore(store.id);
         fetchDirections(store.id, state.currentTravelMode);
+      });
+
+      card.querySelector('[data-action="toggle-trip"]').addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleStoreInTrip(store.id);
       });
 
       card.querySelector('[data-action="details"]').addEventListener("click", (e) => {
@@ -330,9 +370,10 @@
     renderMap();
   }
 
-  // Fetch Directions
+  // Fetch Single Store Directions
   async function fetchDirections(storeId, mode) {
     state.selectedStoreId = storeId;
+    state.activeTripPlan = null; // Clear multi-stop when viewing single route
     directionsDrawer.classList.add("open");
     directionsSteps.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-muted);">Calculating turn-by-turn route...</div>`;
 
@@ -364,39 +405,192 @@
 
       renderMap();
     } catch (err) {
-      console.error("Directions error:", err);
-      directionsSteps.innerHTML = `<div style="padding: 16px; color: var(--danger);">Failed to calculate route.</div>`;
+      console.error("Failed to load directions:", err);
+      directionsSteps.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--danger);">Failed to calculate navigation route.</div>`;
     }
   }
 
-  // Open Detailed Store Modal
-  function openStoreModal(store) {
-    state.selectedStoreId = store.id;
-    document.getElementById("modal-store-name").textContent = store.name;
-    document.getElementById("modal-store-brand").textContent = `${store.brand} · ${store.city}`;
-    document.getElementById("modal-store-address").textContent = store.full_address;
-    document.getElementById("modal-store-phone").textContent = store.phone ? `Phone: ${store.phone}` : "";
+  // =========================================================================
+  // Multi-Stop Trip Planner Controller
+  // =========================================================================
 
-    // Hours
-    const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-    const todayIndex = (new Date().getDay() + 6) % 7; // Monday = 0
+  function toggleStoreInTrip(storeId) {
+    const idx = state.tripStoreIds.indexOf(storeId);
+    if (idx > -1) {
+      state.tripStoreIds.splice(idx, 1);
+    } else {
+      if (state.tripStoreIds.length >= 10) {
+        alert("Maximum of 10 store destinations per trip.");
+        return;
+      }
+      state.tripStoreIds.push(storeId);
+    }
+
+    updateTripBarUI();
+    renderStoreList();
+    renderMap();
+  }
+
+  function updateTripBarUI() {
+    if (!tripBar) return;
+    const count = state.tripStoreIds.length;
+
+    if (count === 0) {
+      tripBar.classList.add("hidden");
+      return;
+    }
+
+    tripBar.classList.remove("hidden");
+    tripCountBadge.textContent = count;
+
+    // Render Pills
+    tripStorePills.innerHTML = "";
+    state.tripStoreIds.forEach((sid) => {
+      const storeItem = state.stores.find((s) => s.store.id === sid);
+      const name = storeItem ? storeItem.store.name.replace("Apex Retail - ", "") : `Store #${sid}`;
+      const pill = document.createElement("span");
+      pill.className = "trip-store-pill";
+      pill.innerHTML = `
+        <span>${escapeHtml(name)}</span>
+        <span class="trip-store-pill-remove" data-remove-id="${sid}">&times;</span>
+      `;
+      pill.querySelector(".trip-store-pill-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleStoreInTrip(sid);
+      });
+      tripStorePills.appendChild(pill);
+    });
+  }
+
+  function clearTripPlanner() {
+    state.tripStoreIds = [];
+    state.activeTripPlan = null;
+    updateTripBarUI();
+    renderStoreList();
+    renderMap();
+  }
+
+  async function executeTripPlan() {
+    if (state.tripStoreIds.length < 2) {
+      alert("Please select at least 2 store destinations to calculate an optimized trip.");
+      return;
+    }
+
+    btnPlanTrip.disabled = true;
+    btnPlanTrip.textContent = "Optimizing Route...";
+
+    try {
+      const payload = {
+        origin: `${state.origin.lat},${state.origin.lng}`,
+        store_ids: state.tripStoreIds,
+        round_trip: tripRoundTrip.checked,
+        optimize: tripOptimize.checked,
+        travel_mode: state.currentTravelMode,
+      };
+
+      const res = await fetch("/api/trip/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to calculate trip itinerary");
+      }
+
+      const plan = await res.json();
+      state.activeTripPlan = plan;
+      state.activeDirections = null; // Clear single route
+      directionsDrawer.classList.remove("open");
+
+      openTripModal(plan);
+      renderMap();
+    } catch (err) {
+      console.error("Trip planning error:", err);
+      alert(`Trip Planning Error: ${err.message}`);
+    } finally {
+      btnPlanTrip.disabled = false;
+      btnPlanTrip.textContent = "🚀 Calculate Route";
+    }
+  }
+
+  function openTripModal(plan) {
+    if (!tripModal) return;
+
+    // Savings banner
+    if (plan.savings) {
+      tripSavingsBanner.classList.remove("hidden");
+      tripSavingsTitle.textContent = `TSP Optimization Saved ${plan.savings.distance_saved_miles.toFixed(1)} mi (${plan.savings.percentage_distance_saved.toFixed(1)}%)`;
+      tripSavingsDesc.textContent = `Estimated ~${Math.round(plan.savings.estimated_minutes_saved)} mins travel time saved over naive visiting sequence.`;
+    } else {
+      tripSavingsBanner.classList.add("hidden");
+    }
+
+    // Stats Grid
+    tripStatDistance.textContent = plan.total_distance_text;
+    tripStatDuration.textContent = plan.total_duration_text;
+    tripStatStops.textContent = `${plan.stops.length} stops (${plan.legs.length} legs)`;
+    tripStatMode.textContent = plan.travel_mode.charAt(0).toUpperCase() + plan.travel_mode.slice(1);
+
+    // Sequential Stops Timeline
+    tripStopsTimeline.innerHTML = "";
+    plan.stops.forEach((stop) => {
+      const item = document.createElement("div");
+      item.className = "timeline-item";
+      const isOrig = stop.is_origin;
+      const isRet = stop.is_destination && !stop.is_origin && stop.store_id === null;
+      const badgeClass = isOrig ? "origin" : isRet ? "return" : "";
+      const label = isOrig ? "A" : isRet ? "★" : String(stop.sequence_index);
+
+      item.innerHTML = `
+        <div class="timeline-badge ${badgeClass}">${label}</div>
+        <div class="timeline-content">
+          <div class="timeline-name">${escapeHtml(stop.name)}</div>
+          <div class="timeline-address">${escapeHtml(stop.address)}</div>
+        </div>
+      `;
+      tripStopsTimeline.appendChild(item);
+    });
+
+    // Navigation Legs
+    tripLegsContainer.innerHTML = "";
+    plan.legs.forEach((leg, idx) => {
+      const card = document.createElement("div");
+      card.className = "leg-card";
+      card.innerHTML = `
+        <div class="leg-header">
+          <span class="leg-title">Leg ${idx + 1}: ${escapeHtml(leg.start_node.name.slice(0, 24))} &rarr; ${escapeHtml(leg.end_node.name.slice(0, 24))}</span>
+          <span class="leg-meta">${leg.distance_text} · ${leg.duration_text}</span>
+        </div>
+      `;
+      tripLegsContainer.appendChild(card);
+    });
+
+    tripModal.classList.add("open");
+  }
+
+  // Open Store Modal Details
+  function openStoreModal(store) {
+    document.getElementById("modal-store-name").textContent = store.name;
+    document.getElementById("modal-store-brand").textContent = `${store.brand} — Store #${store.id}`;
+    document.getElementById("modal-store-address").textContent = store.full_address;
+    document.getElementById("modal-store-phone").textContent = store.phone || "No phone listed";
+
+    // Weekly hours schedule
     const tbody = document.getElementById("modal-hours-body");
     tbody.innerHTML = "";
+    const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+    const nowDay = new Date().toLocaleDateString("en-US", { weekday: "lowercase" });
 
-    days.forEach((day, idx) => {
-      const dayHours = store.hours[day] || { is_closed: false, open_time: "08:00", close_time: "21:00" };
+    days.forEach((d) => {
+      const dh = store.hours[d];
+      const isToday = d === nowDay;
       const tr = document.createElement("tr");
-      if (idx === todayIndex) tr.className = "today";
-
-      const timeDisplay = dayHours.is_closed
-        ? `<span style="color: var(--danger); font-weight: 600;">Closed</span>`
-        : `${format12(dayHours.open_time)} – ${format12(dayHours.close_time)}`;
-
+      if (isToday) tr.className = "today";
       tr.innerHTML = `
-        <td style="font-weight: ${idx === todayIndex ? "700" : "500"}; width: 120px;">
-          ${day.charAt(0).toUpperCase() + day.slice(1)} ${idx === todayIndex ? '<span style="color: var(--accent); font-size: 0.75rem;">(Today)</span>' : ""}
-        </td>
-        <td style="text-align: right;">${timeDisplay}</td>
+        <td style="font-weight: 600; text-transform: capitalize;">${d} ${isToday ? "(Today)" : ""}</td>
+        <td style="text-align: right; ${dh.is_closed ? "color: var(--danger);" : ""}">${dh.is_closed ? "Closed" : `${format12(dh.open_time)} – ${format12(dh.close_time)}`}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -452,6 +646,31 @@
     renderGeospatialSvgMap();
   }
 
+  // Helper to decode Google polyline strings into array of {lat, lng}
+  function decodePolylineJs(str) {
+    if (!str) return [];
+    let index = 0, lat = 0, lng = 0, coordinates = [];
+    while (index < str.length) {
+      let b, shift = 0, result = 0;
+      do {
+        b = str.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += ((result & 1) ? ~(result >> 1) : (result >> 1));
+      shift = 0;
+      result = 0;
+      do {
+        b = str.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
+      coordinates.push({ lat: lat / 1e5, lng: lng / 1e5 });
+    }
+    return coordinates;
+  }
+
   // Geospatial SVG Canvas Map Engine
   function renderGeospatialSvgMap() {
     const stores = state.stores || [];
@@ -493,9 +712,23 @@
 
     const originPt = project(origin.lat, origin.lng);
 
-    // Build Route Polyline Path if directions active
+    // Build Route Polyline Path
     let polylineSvg = "";
-    if (state.activeDirections && state.activeDirections.route_coordinates) {
+
+    // Multi-stop trip polyline takes precedence if active
+    if (state.activeTripPlan && state.activeTripPlan.overview_polyline) {
+      const tripCoords = decodePolylineJs(state.activeTripPlan.overview_polyline);
+      if (tripCoords.length > 0) {
+        const pts = tripCoords.map((c) => {
+          const pt = project(c.lat, c.lng);
+          return `${pt.x},${pt.y}`;
+        });
+        polylineSvg = `
+          <polyline points="${pts.join(" ")}" fill="none" stroke="#7c3aed" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+          <polyline points="${pts.join(" ")}" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+        `;
+      }
+    } else if (state.activeDirections && state.activeDirections.route_coordinates) {
       const pts = state.activeDirections.route_coordinates.map((c) => {
         const pt = project(c.latitude, c.longitude);
         return `${pt.x},${pt.y}`;
@@ -512,14 +745,28 @@
       const st = item.store;
       const pt = project(st.latitude, st.longitude);
       const isSelected = st.id === state.selectedStoreId;
-      const pinColor = item.is_open_now ? "#10b981" : "#ef4444";
-      const scale = isSelected ? 1.3 : 1.0;
+      const isInTrip = state.tripStoreIds.includes(st.id);
+
+      // Check if store is sequenced in active trip plan
+      let tripOrderLabel = null;
+      if (state.activeTripPlan) {
+        const stopNode = state.activeTripPlan.stops.find((s) => s.store_id === st.id);
+        if (stopNode) tripOrderLabel = stopNode.sequence_index;
+      }
+
+      let pinColor = item.is_open_now ? "#10b981" : "#ef4444";
+      if (tripOrderLabel !== null) pinColor = "#7c3aed"; // Purple for trip stops
+      else if (isInTrip) pinColor = "#2563eb";
+
+      const scale = isSelected || tripOrderLabel !== null ? 1.3 : 1.0;
+      const labelText = tripOrderLabel !== null ? `★${tripOrderLabel}` : String(index + 1);
 
       markersSvg += `
         <g class="map-pin" data-store-id="${st.id}" transform="translate(${pt.x}, ${pt.y}) scale(${scale})" style="cursor: pointer;">
           <circle cx="0" cy="0" r="${isSelected ? 18 : 14}" fill="${pinColor}" stroke="#ffffff" stroke-width="2.5" filter="drop-shadow(0px 3px 3px rgba(0,0,0,0.25))" />
-          <text x="0" y="4" font-size="11" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${index + 1}</text>
+          <text x="0" y="4" font-size="${tripOrderLabel !== null ? 9 : 11}" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${labelText}</text>
           ${isSelected ? `<circle cx="0" cy="0" r="22" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-dasharray="3,3" />` : ""}
+          ${isInTrip ? `<circle cx="0" cy="0" r="20" fill="none" stroke="#7c3aed" stroke-width="2" />` : ""}
         </g>
       `;
     });
@@ -550,7 +797,8 @@
               <animate attributeName="r" values="12;24;12" dur="2.5s" repeatCount="indefinite"/>
               <animate attributeName="opacity" values="0.4;0.05;0.4" dur="2.5s" repeatCount="indefinite"/>
             </circle>
-            <circle cx="0" cy="0" r="7" fill="#2563eb" stroke="#ffffff" stroke-width="2.5"/>
+            <circle cx="0" cy="0" r="8" fill="#2563eb" stroke="#ffffff" stroke-width="2.5"/>
+            <text x="0" y="3" font-size="8" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="sans-serif">A</text>
           </g>
 
           <!-- Store Pins -->
@@ -565,9 +813,10 @@
         </div>
 
         <div style="position: absolute; bottom: 12px; left: 16px; background: rgba(255,255,255,0.9); padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--border); box-shadow: var(--shadow);">
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; margin-right: 4px;"></span> Open Now
+          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; margin-right: 4px;"></span> Open
           <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; margin: 0 4px 0 10px;"></span> Closed
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #2563eb; margin: 0 4px 0 10px;"></span> Your Location
+          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #7c3aed; margin: 0 4px 0 10px;"></span> Trip Stop
+          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #2563eb; margin: 0 4px 0 10px;"></span> Origin
         </div>
       </div>
     `;

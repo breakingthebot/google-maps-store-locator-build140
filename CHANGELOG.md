@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-09-06
+
+### Added
+- **Multi-Stop Trip Planning & TSP Optimization** (`src/models/trip.py`, `src/utils/optimizer.py`, `src/services/trip_planner.py`):
+  - Added Traveling Salesperson Problem (TSP) spatial route optimizer supporting exact brute-force permutation solver for sets of up to 8 waypoints and greedy Nearest-Neighbor with 2-opt local search heuristic for larger store sets.
+  - Implemented symmetric pairwise Haversine distance matrix generator in kilometers and miles.
+  - Quantified route efficiency savings calculation reporting kilometers saved, miles saved, percentage distance reduction, and estimated driving minutes saved over naive visiting sequences.
+  - Added `TripPlannerService` coordinating store retrieval, geocoding origin addresses, TSP sequence resolution, leg-by-leg navigation calculation, and composite polyline compilation.
+- **Trip Planning REST API Endpoints** (`src/api/routes.py`):
+  - `POST /api/trip/plan`: Accepts `TripPlanRequest` and returns `TripPlanResponse` with ordered stops, leg steps, polylines, and savings metrics.
+  - `GET /api/trip/preview`: Quick GET endpoint for multi-stop route previews.
+- **CLI Trip Planning Command** (`src/cli/main.py`):
+  - Added `store-locator trip` command supporting `--origin`, `-s/--store` (multiple), `--round-trip/--one-way`, `--optimize/--no-optimize`, and `--mode`.
+  - Rich console output with formatted itinerary overview panel, route efficiency savings callout, chronological stop schedule table, and leg-by-leg segment details.
+- **Frontend Multi-Stop UI Enhancements** (`src/static/index.html`, `src/static/styles.css`, `src/static/app.js`):
+  - Added "+ Trip" / "✓ In Trip" toggle buttons to store cards in search results.
+  - Implemented floating bottom Trip Planner Bar showing selected store count, dismissible store pills, round-trip/optimize toggles, and "Calculate Route" action.
+  - Built full Multi-Stop Itinerary Modal with savings banner, 4-stat metrics grid, chronological timeline, and expandable leg segments.
+  - Enhanced SVG Geospatial Canvas Map to draw composite multi-stop route polylines and numbered waypoint pins for trip stops.
+- **Automated Tests**:
+  - Added 16 new automated tests in `tests/test_optimizer.py`, `tests/test_trip_planner.py`, `tests/test_trip_api.py`, and `tests/test_cli.py` bringing total test suite to 56 tests passing 100%.
+
 ## [1.0.0] - 2026-09-06
 
 ### Added

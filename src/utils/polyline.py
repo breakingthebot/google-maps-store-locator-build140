@@ -21,11 +21,11 @@ def encode_coordinate(coordinate: float) -> str:
     return "".join(encoded)
 
 
-def encode_polyline(points: list[tuple[float, float]]) -> str:
-    """Encode a sequence of (latitude, longitude) pairs into an encoded polyline string.
+def encode_polyline(points: list) -> str:
+    """Encode a sequence of (latitude, longitude) pairs or Coordinates into an encoded polyline string.
 
     Args:
-        points: List of (lat, lng) tuples in decimal degrees.
+        points: List of (lat, lng) tuples or Coordinates in decimal degrees.
 
     Returns:
         Encoded polyline string.
@@ -37,9 +37,16 @@ def encode_polyline(points: list[tuple[float, float]]) -> str:
     prev_lat = 0
     prev_lng = 0
 
-    for lat, lng in points:
-        lat_int = round(lat * 1e5)
-        lng_int = round(lng * 1e5)
+    for pt in points:
+        if isinstance(pt, Coordinates) or hasattr(pt, "latitude"):
+            lat_val = pt.latitude
+            lng_val = pt.longitude
+        else:
+            lat_val = pt[0]
+            lng_val = pt[1]
+
+        lat_int = round(lat_val * 1e5)
+        lng_int = round(lng_val * 1e5)
 
         delta_lat = lat_int - prev_lat
         delta_lng = lng_int - prev_lng

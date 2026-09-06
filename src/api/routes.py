@@ -10,8 +10,10 @@ from src.config import settings
 from src.models.directions import DirectionsResult, TravelMode
 from src.models.geo import Coordinates, GeocodeResult
 from src.models.store import Store, StoreCreate, StoreSummary
+from src.models.trip import TripPlanRequest, TripPlanResponse
 from src.services.google_maps import GoogleMapsService
 from src.services.store_repository import StoreRepository
+from src.services.trip_planner import TripPlannerService
 
 router = APIRouter(prefix="/api", tags=["Store Locator"])
 
@@ -34,6 +36,14 @@ def get_maps_service() -> GoogleMapsService:
     if _maps is None:
         _maps = GoogleMapsService()
     return _maps
+
+
+def get_trip_planner(
+    repo: StoreRepository = Depends(get_repository),
+    maps: GoogleMapsService = Depends(get_maps_service),
+) -> TripPlannerService:
+    """Provide TripPlannerService configured with current repository and maps service."""
+    return TripPlannerService(store_repo=repo, maps_service=maps)
 
 
 class StoreSearchResponse(BaseModel):
@@ -232,3 +242,46 @@ async def get_directions(
         origin_name=origin_name,
         destination_name=dest_name,
     )
+
+
+@router.post("/trip/plan", response_model=TripPlanResponse)
+async def plan_multi_stop_trip(
+    request: TripPlanRequest,
+    planner: TripPlannerService = Depends(get_trip_planner),
+) -> TripPlanResponse:
+    """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP waypoint sequencing."""
+    try:
+        return await planner.plan_trip(request)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+
+
+@router.get("/trip/preview", response_model=TripPlanResponse)
+async def preview_multi_stop_trip(
+    origin: str = Query(..., description="Origin address, city, or coordinates"),
+    stores: str = Query(..., description="Comma-separated store IDs, e.g. '1,3,5'"),
+    round_trip: bool = Query(True, description="Whether to return to origin"),
+    optimize: bool = Query(True, description="Whether to apply TSP optimization"),
+    mode: TravelMode = Query(TravelMode.DRIVING, description="Travel mode"),
+    planner: TripPlannerService = Depends(get_trip_planner),
+) -> TripPlanResponse:
+    """Quick GET endpoint to preview an optimized multi-stop trip."""
+    try:
+        store_ids = [int(s.strip()) for s in stores.split(",") if s.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Store IDs must be a comma-separated list of integers.")
+
+    if len(store_ids) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 store IDs are required for multi-stop planning.")
+
+    req = TripPlanRequest(
+        origin=origin,
+        store_ids=store_ids,
+        round_trip=round_trip,
+        optimize=optimize,
+        travel_mode=mode,
+    )
+    try:
+        return await planner.plan_trip(req)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))

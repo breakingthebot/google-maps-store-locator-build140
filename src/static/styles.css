@@ -601,3 +601,274 @@ header {
     width: calc(100% - 32px);
   }
 }
+
+/* ==========================================================================
+   Multi-Stop Trip Planner & Route Optimization (TSP) Styles
+   ========================================================================== */
+
+.btn-trip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+
+.btn-trip-toggle:hover {
+  background: var(--surface-secondary);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.btn-trip-toggle.in-trip {
+  background: #eff6ff;
+  color: var(--primary);
+  border-color: var(--primary);
+  font-weight: 700;
+}
+
+/* Floating Trip Planner Bar */
+.trip-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 960px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  padding: 12px 20px;
+  z-index: 999;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+}
+
+.trip-bar.hidden {
+  display: none !important;
+}
+
+.trip-bar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.trip-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trip-bar-badge {
+  background: var(--primary);
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.trip-pills-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.trip-store-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 2px 8px;
+  border-radius: 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.trip-store-pill-remove {
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 1rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.trip-store-pill-remove:hover {
+  color: #ef4444;
+}
+
+.trip-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trip-option-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+/* Multi-Stop Modal & Savings Banner */
+.trip-modal-card {
+  max-width: 680px;
+}
+
+.trip-savings-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.trip-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.stat-card {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-top: 4px;
+}
+
+/* Itinerary Timeline */
+.trip-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 10px;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 14px;
+  position: relative;
+  padding-bottom: 16px;
+}
+
+.timeline-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 28px;
+  bottom: 0;
+  width: 2px;
+  background: #cbd5e1;
+}
+
+.timeline-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.timeline-badge.origin {
+  background: #2563eb;
+}
+
+.timeline-badge.return {
+  background: #10b981;
+}
+
+.timeline-content {
+  flex: 1;
+  padding-top: 4px;
+}
+
+.timeline-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.timeline-address {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Leg segment accordions */
+.trip-legs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.leg-card {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.leg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.leg-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.leg-meta {
+  font-size: 0.8rem;
+  color: var(--primary);
+  font-weight: 700;
+}
+

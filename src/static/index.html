@@ -191,6 +191,90 @@
         </div>
       </div>
     </div>
+  <!-- Floating Trip Planner Bar -->
+  <div id="trip-bar" class="trip-bar hidden">
+    <div class="trip-bar-content">
+      <div class="trip-bar-info">
+        <span class="trip-bar-badge" id="trip-count-badge">0</span>
+        <div>
+          <strong style="font-size: 0.95rem;">Multi-Stop Trip Planner</strong>
+          <div id="trip-store-pills" class="trip-pills-container"></div>
+        </div>
+      </div>
+      <div class="trip-bar-actions">
+        <label class="trip-option-label">
+          <input type="checkbox" id="trip-round-trip" checked /> Round-Trip
+        </label>
+        <label class="trip-option-label">
+          <input type="checkbox" id="trip-optimize" checked /> TSP Optimize
+        </label>
+        <button id="btn-plan-trip" class="btn btn-primary" style="padding: 7px 14px; font-weight: 700;">
+          🚀 Calculate Route
+        </button>
+        <button id="btn-clear-trip" class="btn btn-secondary" style="padding: 7px 10px;" title="Clear Trip">
+          Clear
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-Stop Trip Itinerary Modal -->
+  <div id="trip-modal" class="modal-overlay">
+    <div class="modal-card trip-modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 style="font-size: 1.25rem; font-weight: 700;">Multi-Stop Itinerary</h2>
+          <span id="trip-modal-subtitle" style="font-size: 0.85rem; color: var(--text-muted);">Optimized Traveling Salesperson Route</span>
+        </div>
+        <button id="btn-close-trip-modal" style="background: none; border: none; font-size: 1.5rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Savings Alert Banner -->
+        <div id="trip-savings-banner" class="trip-savings-banner hidden">
+          <div style="font-size: 1.4rem;">🎯</div>
+          <div>
+            <div id="trip-savings-title" style="font-weight: 700; color: #065f46;">TSP Route Optimization Saved 0.0 mi (0%)</div>
+            <div id="trip-savings-desc" style="font-size: 0.85rem; color: #047857;">Estimated ~0 mins travel time saved over naive visiting order.</div>
+          </div>
+        </div>
+
+        <!-- Trip Summary Stats Grid -->
+        <div class="trip-stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Total Distance</span>
+            <span id="trip-stat-distance" class="stat-value">-- mi</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Travel Time</span>
+            <span id="trip-stat-duration" class="stat-value">-- mins</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Total Stops</span>
+            <span id="trip-stat-stops" class="stat-value">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Routing Mode</span>
+            <span id="trip-stat-mode" class="stat-value">Driving</span>
+          </div>
+        </div>
+
+        <!-- Sequential Stops Schedule -->
+        <h4 style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-top: 15px; margin-bottom: 8px;">
+          Optimized Visit Schedule
+        </h4>
+        <div id="trip-stops-timeline" class="trip-timeline">
+          <!-- Sequential timeline nodes injected here -->
+        </div>
+
+        <!-- Navigation Legs -->
+        <h4 style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-top: 20px; margin-bottom: 8px;">
+          Turn-by-Turn Route Legs
+        </h4>
+        <div id="trip-legs-container" class="trip-legs-list">
+          <!-- Leg accordions injected here -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

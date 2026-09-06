@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12%20%7C%203.11%20%7C%203.10-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/Tests-40%20Passed%20(100%25)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-56%20Passed%20(100%25)-brightgreen.svg)]()
 
-Production-grade geospatial retail store locator and routing platform. Powered by Google Maps Platform APIs (Geocoding, Directions, Places) and an offline-resilient simulation engine. Features Great-Circle Haversine proximity search, spatial bounding-box indexing, real-time operating hours evaluation ("Open Now", "Closing Soon"), customer rating aggregations, verified reviews, amenity filters, a Rich terminal CLI (`store-locator`), and a responsive single-page map interface.
+Production-grade geospatial retail store locator, routing platform, and multi-stop trip planner. Powered by Google Maps Platform APIs (Geocoding, Directions, Places) and an offline-resilient simulation engine. Features Great-Circle Haversine proximity search, spatial bounding-box indexing, real-time operating hours evaluation ("Open Now", "Closing Soon"), Traveling Salesperson Problem (TSP) multi-stop route optimization, quantified mileage savings, customer rating aggregations, verified reviews, amenity filters, a Rich terminal CLI (`store-locator`), and an interactive single-page map interface.
 
 ---
 
@@ -25,19 +25,27 @@ graph TD
         MapsClient["Google Maps Client (src/services/google_maps.py)"]
         MockMaps["Offline Mock Maps Engine (src/services/mock_maps.py)"]
         Repo["Store Repository (src/services/store_repository.py)"]
+        TripPlanner["Trip Planner Service (src/services/trip_planner.py)"]
     end
 
     subgraph Domain & Calculation Utilities
         Haversine["Haversine Formula & BBox (src/utils/distance.py)"]
         HoursCalc["Operating Hours Engine (src/utils/hours.py)"]
         Polyline["Polyline Encoder/Decoder (src/utils/polyline.py)"]
+        Optimizer["TSP Route Optimizer & Matrix (src/utils/optimizer.py)"]
     end
+
+    TripPlanner --> Optimizer
+    TripPlanner --> MapsClient
+    TripPlanner --> Repo
 
     MapsClient -.->|Live Key Configured| LiveAPI["Google Maps Platform (Geocoding / Directions)"]
     MapsClient -.->|No Key or Offline| MockMaps
 
     Repo --> Haversine
     Repo --> HoursCalc
+    Optimizer --> Haversine
+    TripPlanner --> Polyline
     MapsClient --> Polyline
     MockMaps --> Polyline
 
@@ -49,12 +57,14 @@ graph TD
 ## Features
 
 - **Geospatial Proximity Search**: Computes exact Haversine great-circle distances in kilometers and miles. Leverages bounding-box pre-filtering for scalable SQL spatial searches.
-- **Real-Time Operating Hours & "Open Now" Engine**: Dynamically evaluates weekly 7-day schedules against the current local time. Displays "Open until X:XX PM", "Closing soon (Xm left)", and "Closed · Opens tomorrow at X:XX AM".
+- **Multi-Stop Trip Planner & TSP Route Optimization**: Visit 2 to 12 stores in one trip. Uses spatial Traveling Salesperson algorithms (exact brute-force permutation for $N \le 8$, 2-opt heuristic for larger sets) to re-sequence waypoints and eliminate backtracking.
+- **Quantified Travel Savings**: Calculates exact mileage, drive time, and percentage distance reductions gained over naive visiting order.
+- **Real-Time Operating Hours & "Open Now" Engine**: Dynamically evaluates weekly 7-day schedules against the current local system clock. Displays "Open until X:XX PM", "Closing soon (Xm left)", and "Closed · Opens tomorrow at X:XX AM".
 - **Turn-by-Turn Navigation & Polyline Routing**: Calculates turn-by-turn routing steps with distances, durations, and Google Maps encoded polylines across Driving, Walking, Bicycling, and Transit modes.
 - **Zero-Key Offline Mock Simulation Engine**: Runs out of the box with zero external dependencies. Features deterministic geocoding for cities, postal codes, and landmarks, and simulated turn-by-turn routing when no Google Cloud billing key is provided.
-- **Rich Command-Line Suite (`store-locator`)**: Complete terminal tool for proximity searching, store inspection, routing, and database management.
-- **Interactive Responsive Map Interface**: Standalone web UI with custom map pins color-coded by open/closed status, user radar location, search autocomplete, radius controls, filter chips, directions drawer, and store details modal.
-- **Automated Verification**: Comprehensive test suite covering spatial geometry, operating hours boundary conditions, mock engines, REST endpoints, and CLI flows.
+- **Rich Command-Line Suite (`store-locator`)**: Complete terminal tool for proximity searching, multi-stop trip planning (`store-locator trip`), store profile inspection, routing, and database management.
+- **Interactive Responsive Map Interface**: Standalone web UI with custom map pins color-coded by open/closed status, user radar location, search autocomplete, radius controls, filter chips, floating multi-stop trip drawer, and store details modal.
+- **Automated Verification**: Comprehensive 56-test suite covering spatial geometry, operating hours boundary conditions, mock engines, TSP route optimization, REST endpoints, and CLI flows.
 
 ---
 
@@ -98,55 +108,50 @@ Copy the example environment template:
 cp .env.example .env
 ```
 
-To connect to live Google Maps services, add your API key to `.env`:
-```ini
-GOOGLE_MAPS_API_KEY=your_google_maps_platform_api_key_here
+The app works **100% offline out-of-the-box** using `MockGoogleMapsService` with zero API keys required. To connect to live Google Maps Platform APIs:
+
+```env
+GOOGLE_MAPS_API_KEY=AIzaSyYourActualGoogleKeyHere
 ```
-*(If left empty or commented out, the offline mock engine automatically provides deterministic geocoding and routing).*
+
+### 3. Run Automated Checks & Tests
+
+```bash
+pytest
+```
 
 ---
 
 ## Running Locally
 
-### Launch the Web Application
+### Starting the Web UI & API Server
 
 ```bash
-store-locator serve --port 8000
-# Or using uvicorn directly:
-uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+# Default port 8000 (or specify --port 8080 if port 8000 is in use)
+store-locator serve --port 8080
 ```
 
-Open your browser and navigate to:
-- **Interactive Map UI**: `http://localhost:8000/`
-- **Interactive OpenAPI Docs (Swagger)**: `http://localhost:8000/docs`
-- **ReDoc Documentation**: `http://localhost:8000/redoc`
+Open your browser to: **http://localhost:8080**
 
----
-
-## CLI Usage Guide
-
-The `store-locator` CLI suite provides command-line control over store proximity searches, navigation, and store directory inspection:
+### Using the CLI Suite
 
 ```bash
-# Check CLI version
+# View CLI version
 store-locator --version
 
-# Search nearest stores by city or address
-store-locator search --address "San Francisco" --radius 15
+# Proximity search near San Francisco
+store-locator search --address "San Francisco" --radius 20 --open-now
 
-# Search with filters (Open Now only, minimum rating, specific amenity)
-store-locator search --address "Market St, San Francisco" --open-now --min-rating 4.5 --amenity drive_thru
-
-# Search by geographic coordinates
-store-locator search --lat 37.7749 --lng -122.4194 --radius 25 --sort rating
-
-# Get turn-by-turn navigation directions to store #1
-store-locator directions --from-loc "760 Market St" --to-store 1 --mode driving
-
-# Inspect a specific store's full weekly schedule, reviews, and amenities
+# View detailed store profile, weekly schedule, amenities, and reviews
 store-locator get 1
 
-# List all registered stores in the database
+# Calculate turn-by-turn route
+store-locator directions --from-loc "760 Market St" --to-store 1 --mode driving
+
+# Plan an optimized multi-stop trip visiting stores 1, 2, and 4
+store-locator trip --origin "Market St" -s 1 -s 2 -s 4 --round-trip
+
+# List registered stores
 store-locator list --limit 10
 ```
 
@@ -155,51 +160,28 @@ store-locator list --limit 10
 ## REST API Reference
 
 | Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/health` | System health check and Maps provider status |
-| `GET` | `/api/config` | Public frontend configuration and default center coordinates |
-| `GET` | `/api/geocode` | Geocode address query or reverse-geocode lat/lng coordinates |
-| `GET` | `/api/stores` | Proximity store search by address or lat/lng with filters |
-| `GET` | `/api/stores/{id}` | Complete store profile with 7-day schedule and verified reviews |
-| `POST` | `/api/stores` | Register a new retail store branch |
-| `GET` | `/api/directions` | Calculate turn-by-turn directions, step instructions, and encoded polyline |
-
-### Example Store Search Request:
-
-```bash
-curl -X GET "http://localhost:8000/api/stores?address=San+Francisco&radius_km=15&open_now=true"
-```
-
-### Example Directions Request:
-
-```bash
-curl -X GET "http://localhost:8000/api/directions?origin_lat=37.7749&origin_lng=-122.4194&destination_store_id=1&mode=driving"
-```
-
----
-
-## Running Tests
-
-Execute the automated test suite with pytest:
-
-```bash
-# Run complete test suite
-pytest -v --tb=short
-
-# Run with test coverage
-pytest --tb=short
-```
+|---|---|---|
+| `GET` | `/api/health` | System health, database connection, and Maps provider status |
+| `GET` | `/api/config` | Public frontend configuration and default coordinates |
+| `GET` | `/api/geocode` | Geocode an address query or reverse geocode lat/lng |
+| `GET` | `/api/stores/search` | Spatial proximity search with amenity & open-now filters |
+| `GET` | `/api/stores/{id}` | Store details with full weekly schedule and customer reviews |
+| `POST` | `/api/stores` | Register a new retail store location |
+| `GET` | `/api/directions` | Single turn-by-turn navigation route, steps, and polyline |
+| `POST` | `/api/trip/plan` | Plan multi-stop trip with TSP waypoint optimization and savings |
+| `GET` | `/api/trip/preview` | Quick multi-stop preview endpoint |
 
 ---
 
 ## Data Handling & Privacy
 
-- **Data Posture**: The application does not collect, track, or persist any end-user personal identifiers, payment details, or tracking cookies.
-- **Location Data**: Search addresses and GPS coordinates provided by users are processed in memory solely to compute proximity distances and directions routes. Geocodes are never stored in user profiles or transmitted to third parties other than the Google Maps Platform (when live API keys are enabled).
-- **Redaction & Secrets**: API tokens and secrets are loaded exclusively via environment variables and never logged in plain text. HTTP request logs automatically sanitize credentials.
+- **Data Posture**: Store locator queries and geolocation requests are ephemeral and processed in-memory.
+- **Zero PII Storage**: End-user search queries, GPS coordinates, and routing requests are never written to disk or database tables.
+- **Redacted Logging**: All external HTTP requests to Google Maps Platform strictly mask and redact API keys (`***REDACTED***`).
+- **Data Persistence**: Only retail store facility catalog records (store name, public street address, operating hours, amenities, public reviews) are persisted in `storage/store_locator.db`.
 
 ---
 
 ## License
 
-This project is licensed under the terms of the [MIT License](LICENSE).
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

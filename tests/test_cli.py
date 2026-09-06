@@ -49,3 +49,14 @@ def test_cli_directions():
     assert result.exit_code == 0
     assert "Route Directions (Driving)" in result.output
     assert "Turn-by-Turn Navigation Steps" in result.output
+
+
+def test_cli_trip():
+    """CLI trip command should calculate multi-stop route with sequential itinerary table."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["trip", "--origin", "Market St", "-s", "1", "-s", "2", "-s", "3", "--round-trip"])
+    assert result.exit_code == 0
+    assert "Optimized Trip Overview" in result.output
+    assert "Sequential Stop Schedule" in result.output
+    assert "Leg-by-Leg Route Segments" in result.output
+

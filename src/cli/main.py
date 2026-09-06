@@ -12,8 +12,10 @@ from rich.table import Table
 from src.config import settings
 from src.models.directions import TravelMode
 from src.models.geo import Coordinates
+from src.models.trip import TripPlanRequest
 from src.services.google_maps import GoogleMapsService
 from src.services.store_repository import StoreRepository
+from src.services.trip_planner import TripPlannerService
 from src.utils.hours import format_time_12hr
 
 console = Console()
@@ -279,6 +281,103 @@ def list_stores(limit: int) -> None:
     console.print()
     console.print(table)
     console.print()
+
+
+@cli.command("trip")
+@click.option("--origin", "-o", required=True, type=str, help="Starting origin address, city, or 'lat,lng'")
+@click.option("--store", "-s", "stores", multiple=True, type=int, required=True, help="Store IDs to visit (repeat -s for multiple)")
+@click.option("--round-trip/--one-way", default=True, show_default=True, help="Return to origin after visiting all stores")
+@click.option("--optimize/--no-optimize", default=True, show_default=True, help="Apply TSP route optimization")
+@click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["driving", "walking", "bicycling", "transit"]),
+    default="driving",
+    show_default=True,
+    help="Travel mode",
+)
+def plan_trip_cli(origin: str, stores: tuple[int, ...], round_trip: bool, optimize: bool, mode: str) -> None:
+    """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP sequencing."""
+    if len(stores) < 2:
+        console.print("[red]Error:[/red] Trip planning requires at least 2 store destinations (-s <id> -s <id>).")
+        raise click.Abort()
+
+    console.print(f"[cyan]Calculating multi-stop itinerary for {len(stores)} stores from '{origin}'...[/cyan]")
+
+    planner = TripPlannerService()
+    req = TripPlanRequest(
+        origin=origin,
+        store_ids=list(stores),
+        round_trip=round_trip,
+        optimize=optimize,
+        travel_mode=TravelMode(mode),
+    )
+
+    try:
+        result = asyncio.run(planner.plan_trip(req))
+    except ValueError as err:
+        console.print(f"[red]Planning Error:[/red] {err}")
+        raise click.Abort()
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold cyan]Multi-Stop Itinerary ({result.travel_mode.value.title()})[/bold cyan]\n"
+            f"[bold]Origin:[/bold] {result.origin_label}\n"
+            f"[bold]Destination:[/bold] {result.destination_label}\n"
+            f"[bold]Stops:[/bold] {len(result.stops)} total ({len(result.legs)} legs) | [bold]Round-Trip:[/bold] {'Yes' if result.round_trip else 'No'}\n"
+            f"[bold]Total Distance:[/bold] {result.total_distance_miles:.1f} mi ({result.total_distance_km:.1f} km)\n"
+            f"[bold]Total Travel Time:[/bold] {result.total_duration_text}",
+            title="Optimized Trip Overview",
+            border_style="cyan",
+        )
+    )
+
+    # Optimization savings panel if available
+    if result.savings:
+        console.print(
+            Panel(
+                f"[bold green]TSP Optimization Saved:[/bold green] [bold]{result.savings.distance_saved_miles:.1f} miles[/bold] "
+                f"({result.savings.percentage_distance_saved:.1f}% distance reduction)\n"
+                f"[bold]Naive Distance:[/bold] {result.savings.naive_distance_km * 0.621371:.1f} mi -> [bold]Optimized Distance:[/bold] {result.savings.optimized_distance_km * 0.621371:.1f} mi\n"
+                f"[bold]Estimated Drive Time Saved:[/bold] ~{result.savings.estimated_minutes_saved:.0f} mins",
+                title="Route Efficiency Savings",
+                border_style="green",
+            )
+        )
+
+    # Sequential Stops Table
+    stops_table = Table(title="Sequential Stop Schedule", show_header=True, header_style="bold magenta")
+    stops_table.add_column("Seq", width=4, justify="right")
+    stops_table.add_column("Role", width=12)
+    stops_table.add_column("Location / Store Name", style="bold")
+    stops_table.add_column("Address / City")
+
+    for s in result.stops:
+        role = "[blue]Origin[/blue]" if s.is_origin else "[green]Return[/green]" if s.is_destination and s.is_origin == False and s.store_id is None else f"Store #{s.store_id}"
+        stops_table.add_row(str(s.sequence_index + 1), role, s.name, s.address)
+
+    console.print(stops_table)
+
+    # Leg by Leg Table
+    legs_table = Table(title="Leg-by-Leg Route Segments", show_header=True, header_style="bold blue")
+    legs_table.add_column("Leg", width=4, justify="right")
+    legs_table.add_column("From", style="cyan")
+    legs_table.add_column("To", style="green")
+    legs_table.add_column("Distance", width=12, justify="right")
+    legs_table.add_column("Duration", width=12, justify="right")
+
+    for leg in result.legs:
+        legs_table.add_row(
+            str(leg.leg_index + 1),
+            leg.start_node.name[:25],
+            leg.end_node.name[:25],
+            leg.distance_text,
+            leg.duration_text,
+        )
+
+    console.print(legs_table)
+    console.print(f"\n[dim]Overview Polyline ({len(result.overview_polyline)} chars):[/dim] [italic]{result.overview_polyline[:40]}...[/italic]\n")
 
 
 @cli.command()
