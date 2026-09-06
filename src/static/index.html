@@ -77,6 +77,9 @@
     <div class="filter-chip" id="chip-wifi" data-filter="wifi">
       <span>📶</span> Free WiFi
     </div>
+    <div class="filter-chip" id="chip-traffic-layer" data-filter="traffic_layer" style="border-color: #f59e0b; color: #b45309;">
+      <span>🚦</span> Traffic Layer
+    </div>
 
     <!-- Radius dropdown -->
     <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
@@ -137,6 +140,40 @@
             <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" data-mode="walking">🚶 Walk</button>
             <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" data-mode="bicycling">🚲 Bike</button>
           </div>
+        </div>
+
+        <!-- Traffic & Departure Controls Bar -->
+        <div class="directions-traffic-bar" style="display: flex; gap: 6px; align-items: center; padding: 6px 14px; background: var(--surface-secondary); border-bottom: 1px solid var(--border); font-size: 0.78rem;">
+          <span style="font-weight: 600; color: var(--text-muted);">🕒 Depart:</span>
+          <select id="dir-departure-select" class="filter-select" style="padding: 3px 6px; font-size: 0.75rem;">
+            <option value="now" selected>Leave Now</option>
+            <option value="morning_rush">Morning Rush (8:30 AM)</option>
+            <option value="midday">Midday (12:30 PM)</option>
+            <option value="evening_rush">Evening Rush (5:30 PM)</option>
+            <option value="off_peak">Off-Peak Night (9:30 PM)</option>
+          </select>
+          <select id="dir-traffic-model" class="filter-select" style="padding: 3px 6px; font-size: 0.75rem;">
+            <option value="best_guess" selected>Best Guess</option>
+            <option value="optimistic">Optimistic</option>
+            <option value="pessimistic">Pessimistic</option>
+          </select>
+          <button id="btn-dir-advisor" class="btn btn-secondary" style="margin-left: auto; padding: 2px 8px; font-size: 0.72rem; border-radius: 4px;" title="Analyze best time to leave">
+            📊 Advisor
+          </button>
+        </div>
+
+        <div id="directions-traffic-badge" class="directions-traffic-badge hidden" style="padding: 5px 14px; background: #fef3c7; color: #92400e; font-size: 0.78rem; font-weight: 600; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #fde68a;">
+          <span id="directions-traffic-text">Traffic: Clear flow</span>
+          <span id="directions-traffic-delay" style="color: #b91c1c;">+0m delay</span>
+        </div>
+
+        <!-- Directions Inline Advisor Popover -->
+        <div id="directions-advisor-box" class="directions-advisor-box hidden" style="padding: 10px 14px; background: #f0fdf4; border-bottom: 1px solid #bbf7d0; font-size: 0.78rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <strong style="color: #166534;">📊 Departure Advisor</strong>
+            <button id="btn-close-dir-advisor" style="background:none; border:none; color:#166534; cursor:pointer; font-weight:bold;">&times;</button>
+          </div>
+          <div id="dir-advisor-content" style="color: #15803d; line-height: 1.4;">Loading departure windows...</div>
         </div>
 
         <div id="directions-steps" class="directions-steps-list">
@@ -204,6 +241,18 @@
         </div>
       </div>
       <div class="trip-bar-actions">
+        <select id="trip-departure-select" class="filter-select" style="font-size: 0.78rem; padding: 4px 8px; border-radius: 20px;">
+          <option value="now" selected>🕒 Leave Now</option>
+          <option value="morning_rush">🌅 Morning Rush (8:30 AM)</option>
+          <option value="midday">☀️ Midday (12:30 PM)</option>
+          <option value="evening_rush">🌆 Evening Rush (5:30 PM)</option>
+          <option value="off_peak">🌙 Off-Peak (9:30 PM)</option>
+        </select>
+        <select id="trip-traffic-model" class="filter-select" style="font-size: 0.78rem; padding: 4px 8px; border-radius: 20px;">
+          <option value="best_guess" selected>Best Guess</option>
+          <option value="optimistic">Optimistic</option>
+          <option value="pessimistic">Pessimistic</option>
+        </select>
         <label class="trip-option-label">
           <input type="checkbox" id="trip-round-trip" checked /> Round-Trip
         </label>
@@ -240,6 +289,16 @@
           </div>
         </div>
 
+        <!-- Traffic Congestion & Delay Banner -->
+        <div id="trip-traffic-banner" class="trip-traffic-banner hidden" style="margin-bottom: 12px; padding: 10px 14px; border-radius: 8px; display: flex; align-items: center; gap: 12px; border: 1px solid #fde68a; background: #fffbeb;">
+          <div style="font-size: 1.5rem;" id="trip-traffic-icon">🚦</div>
+          <div style="flex: 1;">
+            <div id="trip-traffic-title" style="font-weight: 700; color: #92400e;">Traffic Flow: Normal</div>
+            <div id="trip-traffic-desc" style="font-size: 0.82rem; color: #b45309;">Estimated duration under current traffic conditions.</div>
+          </div>
+          <div id="trip-traffic-delay-badge" style="padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem; background: #fee2e2; color: #991b1b;">+0m delay</div>
+        </div>
+
         <!-- Trip Summary Stats Grid -->
         <div class="trip-stats-grid">
           <div class="stat-card">
@@ -249,6 +308,7 @@
           <div class="stat-card">
             <span class="stat-label">Travel Time</span>
             <span id="trip-stat-duration" class="stat-value">-- mins</span>
+            <span id="trip-stat-traffic-sub" style="font-size: 0.72rem; color: #b45309; margin-top: 2px;"></span>
           </div>
           <div class="stat-card">
             <span class="stat-label">Total Stops</span>
@@ -266,6 +326,9 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
             📱 Open in Google Maps
           </a>
+          <button id="trip-btn-advisor" class="btn btn-export-secondary" title="View best time of day to depart">
+            📊 Departure Advisor
+          </button>
           <button id="trip-btn-qr" class="btn btn-export-secondary" title="Scan with phone camera to navigate">
             📷 QR Handoff
           </button>
@@ -278,6 +341,18 @@
           <button id="trip-btn-print" class="btn btn-export-secondary" title="Print physical route manifest slip">
             🖨️ Print Route Slip
           </button>
+        </div>
+
+        <!-- Predictive Departure Advisor Popover / Drawer -->
+        <div id="trip-advisor-popover" class="trip-advisor-popover hidden" style="margin-top: 14px; padding: 14px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <h4 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--text);">📊 Predictive Departure Time Advisor</h4>
+            <button id="btn-close-trip-advisor" style="background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+            Simulated diurnal congestion curve. Choose off-peak departure windows to save driving time and fuel.
+          </p>
+          <div id="trip-advisor-bars" class="advisor-bars-list"></div>
         </div>
 
         <!-- Phone QR Modal / Popover -->

@@ -96,4 +96,77 @@ def test_cli_trip_export():
             assert "Stop #" in content
 
 
+def test_cli_directions_traffic():
+    """CLI directions with departure time and traffic model."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "directions",
+            "--from-loc", "Market St",
+            "--to-store", "1",
+            "--mode", "driving",
+            "-d", "evening_rush",
+            "--traffic-model", "pessimistic",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Route Directions (Driving)" in result.output
+    assert "Traffic Condition" in result.output
+    assert "In Traffic" in result.output
 
+
+def test_cli_trip_traffic():
+    """CLI trip with rush hour departure time."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "trip",
+            "--origin", "Market St",
+            "-s", "1",
+            "-s", "2",
+            "-s", "3",
+            "-d", "morning_rush",
+            "--traffic-model", "best_guess",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Traffic Condition" in result.output
+    assert "Congestion Delay" in result.output
+
+
+def test_cli_traffic_advisor_single():
+    """CLI traffic predictive departure advisor for single store destination."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "traffic",
+            "--from-loc", "Market St",
+            "--to-store", "1",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Predictive Departure Time Advisor" in result.output
+    assert "Best Departure Window" in result.output
+    assert "Worst Departure Window" in result.output
+    assert "Potential Time Saved" in result.output
+
+
+def test_cli_traffic_advisor_trip():
+    """CLI traffic predictive departure advisor for multi-stop itinerary."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "traffic",
+            "--from-loc", "Market St",
+            "-s", "1",
+            "-s", "2",
+            "-s", "3",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Predictive Departure Time Advisor" in result.output
+    assert "Early Morning" in result.output

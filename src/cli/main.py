@@ -12,6 +12,7 @@ from rich.table import Table
 from src.config import settings
 from src.models.directions import TravelMode
 from src.models.geo import Coordinates
+from src.models.traffic import TrafficModel
 from src.models.trip import TripPlanRequest
 from src.services.google_maps import GoogleMapsService
 from src.services.store_repository import StoreRepository
@@ -189,8 +190,10 @@ def get(store_id: int) -> None:
 @click.option("--from-loc", "-f", "origin_input", required=True, help="Origin address, landmark, or lat,lng")
 @click.option("--to-store", "-t", "store_id", type=int, required=True, help="Target store ID")
 @click.option("--mode", "-m", type=click.Choice(["driving", "walking", "bicycling", "transit"]), default="driving", show_default=True)
-def directions(origin_input: str, store_id: int, mode: str) -> None:
-    """Get turn-by-turn navigation directions from an origin to a store."""
+@click.option("--departure-time", "-d", default=None, help="Departure time ('now', '08:30', '17:30', 'morning_rush', 'evening_rush')")
+@click.option("--traffic-model", type=click.Choice(["best_guess", "optimistic", "pessimistic"]), default="best_guess", show_default=True, help="Traffic model heuristic")
+def directions(origin_input: str, store_id: int, mode: str, departure_time: Optional[str], traffic_model: str) -> None:
+    """Get turn-by-turn navigation directions from an origin to a store with traffic modeling."""
     repo = StoreRepository()
     maps = GoogleMapsService()
 
@@ -220,6 +223,7 @@ def directions(origin_input: str, store_id: int, mode: str) -> None:
             origin_name = geo.formatted_address
 
     travel_mode = TravelMode(mode)
+    t_model = TrafficModel(traffic_model)
     with console.status(f"[cyan]Calculating {mode} route to {store.name}...[/cyan]"):
         result = asyncio.run(
             maps.directions(
@@ -228,17 +232,28 @@ def directions(origin_input: str, store_id: int, mode: str) -> None:
                 mode=travel_mode,
                 origin_name=origin_name,
                 destination_name=store.name,
+                departure_time=departure_time,
+                traffic_model=t_model,
             )
         )
 
     console.print()
+    traffic_info = ""
+    if result.duration_in_traffic_text:
+        traffic_info = (
+            f"\n[dim]Duration in Traffic (In Traffic):[/dim] [bold yellow]{result.duration_in_traffic_text}[/bold yellow]\n"
+            f"[dim]Traffic Condition:[/dim] [bold]{result.traffic_condition.value.upper()}[/bold] "
+            f"([dim]Delay:[/dim] [bold red]{result.traffic_delay_text}[/bold red])"
+        )
+
     console.print(
         Panel.fit(
             f"[bold green]Route Directions ({travel_mode.value.capitalize()})[/bold green]\n"
             f"[dim]From:[/dim] [bold]{result.origin_address}[/bold]\n"
             f"[dim]To:[/dim]   [bold]{store.name}[/bold] ({store.street}, {store.city})\n"
             f"[dim]Distance:[/dim] [bold]{result.distance_text}[/bold] ({result.total_distance_km:.1f} km)\n"
-            f"[dim]Estimated Duration:[/dim] [bold green]{result.duration_text}[/bold green]",
+            f"[dim]Free-Flow Duration:[/dim] [bold green]{result.duration_text}[/bold green]"
+            f"{traffic_info}",
             border_style="green",
         )
     )
@@ -248,9 +263,14 @@ def directions(origin_input: str, store_id: int, mode: str) -> None:
     steps_table.add_column("Turn Instruction", style="bold white")
     steps_table.add_column("Distance", width=12, justify="right")
     steps_table.add_column("Time", width=10, justify="right")
+    if result.duration_in_traffic_text:
+        steps_table.add_column("Traffic Time", width=14, justify="right")
 
     for idx, step in enumerate(result.steps, 1):
-        steps_table.add_row(str(idx), step.instruction, step.distance_text, step.duration_text)
+        row = [str(idx), step.instruction, step.distance_text, step.duration_text]
+        if result.duration_in_traffic_text:
+            row.append(step.duration_in_traffic_text or step.duration_text)
+        steps_table.add_row(*row)
 
     console.print(steps_table)
     console.print(f"\n[dim]Overview Polyline:[/dim] [italic]{result.overview_polyline[:36]}...[/italic]\n")
@@ -297,6 +317,8 @@ def list_stores(limit: int) -> None:
     show_default=True,
     help="Travel mode",
 )
+@click.option("--departure-time", "-d", default=None, help="Departure time ('now', '08:30', '17:30', 'rush')")
+@click.option("--traffic-model", type=click.Choice(["best_guess", "optimistic", "pessimistic"]), default="best_guess", show_default=True, help="Traffic model heuristic")
 @click.option("--export-gpx", type=click.Path(writable=True), default=None, help="File path to save route as GPX 1.1")
 @click.option("--export-csv", type=click.Path(writable=True), default=None, help="File path to save manifest as CSV")
 @click.option("--show-url", is_flag=True, default=True, help="Display universal Google Maps navigation deep link")
@@ -306,11 +328,13 @@ def plan_trip_cli(
     round_trip: bool,
     optimize: bool,
     mode: str,
+    departure_time: Optional[str],
+    traffic_model: str,
     export_gpx: Optional[str],
     export_csv: Optional[str],
     show_url: bool,
 ) -> None:
-    """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP sequencing."""
+    """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP sequencing and traffic delays."""
     if len(stores) < 2:
         console.print("[red]Error:[/red] Trip planning requires at least 2 store destinations (-s <id> -s <id>).")
         raise click.Abort()
@@ -324,6 +348,8 @@ def plan_trip_cli(
         round_trip=round_trip,
         optimize=optimize,
         travel_mode=TravelMode(mode),
+        departure_time=departure_time,
+        traffic_model=TrafficModel(traffic_model),
     )
 
     try:
@@ -333,6 +359,17 @@ def plan_trip_cli(
         raise click.Abort()
 
     console.print()
+    traffic_banner = ""
+    if result.traffic_condition:
+        delay_val = f"+{result.total_traffic_delay_minutes:.0f} mins" if result.total_traffic_delay_minutes > 0 else "0 mins"
+        traffic_banner = (
+            f"\n[bold]Traffic Condition:[/bold] [bold]{result.traffic_condition.value.upper()}[/bold] "
+            f"([dim]Congestion Delay:[/dim] [bold red]{delay_val}[/bold red])"
+        )
+        if result.total_duration_in_traffic_text:
+            traffic_banner += f"\n[bold]Duration in Traffic:[/bold] [bold yellow]{result.total_duration_in_traffic_text}[/bold yellow]"
+
+
     console.print(
         Panel(
             f"[bold cyan]Multi-Stop Itinerary ({result.travel_mode.value.title()})[/bold cyan]\n"
@@ -340,7 +377,8 @@ def plan_trip_cli(
             f"[bold]Destination:[/bold] {result.destination_label}\n"
             f"[bold]Stops:[/bold] {len(result.stops)} total ({len(result.legs)} legs) | [bold]Round-Trip:[/bold] {'Yes' if result.round_trip else 'No'}\n"
             f"[bold]Total Distance:[/bold] {result.total_distance_miles:.1f} mi ({result.total_distance_km:.1f} km)\n"
-            f"[bold]Total Travel Time:[/bold] {result.total_duration_text}",
+            f"[bold]Free-Flow Travel Time:[/bold] {result.total_duration_text}"
+            f"{traffic_banner}",
             title="Optimized Trip Overview",
             border_style="cyan",
         )
@@ -379,14 +417,20 @@ def plan_trip_cli(
     legs_table.add_column("To", style="green")
     legs_table.add_column("Distance", width=12, justify="right")
     legs_table.add_column("Duration", width=12, justify="right")
+    legs_table.add_column("Traffic Duration", width=16, justify="right")
+    legs_table.add_column("Delay", width=10, justify="right")
 
     for leg in result.legs:
+        dur_traffic = leg.duration_in_traffic_text or leg.duration_text
+        delay = f"+{leg.traffic_delay_minutes:.0f}m" if leg.traffic_delay_minutes > 0 else "-"
         legs_table.add_row(
             str(leg.leg_index + 1),
-            leg.start_node.name[:25],
-            leg.end_node.name[:25],
+            leg.start_node.name[:22],
+            leg.end_node.name[:22],
             leg.distance_text,
             leg.duration_text,
+            dur_traffic,
+            delay,
         )
 
     console.print(legs_table)
@@ -415,6 +459,100 @@ def plan_trip_cli(
     console.print(f"\n[dim]Overview Polyline ({len(result.overview_polyline)} chars):[/dim] [italic]{result.overview_polyline[:40]}...[/italic]\n")
 
 
+@cli.command("traffic")
+@click.option("--from-loc", "-f", "origin_input", required=True, help="Origin address, landmark, or lat,lng")
+@click.option("--to-store", "-t", "store_id", type=int, default=None, help="Target store ID")
+@click.option("-s", "--store", "stores", type=int, multiple=True, help="Store IDs for multi-stop trip departure analysis")
+@click.option(
+    "--traffic-model",
+    type=click.Choice(["best_guess", "optimistic", "pessimistic"]),
+    default="best_guess",
+    show_default=True,
+    help="Traffic model heuristic",
+)
+@click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["driving", "walking", "bicycling", "transit"]),
+    default="driving",
+    show_default=True,
+    help="Travel mode",
+)
+def traffic_analysis(origin_input: str, store_id: Optional[int], stores: tuple[int, ...], traffic_model: str, mode: str) -> None:
+    """Analyze departure times throughout the day and find the optimal travel window."""
+    if not store_id and not stores:
+        console.print("[red]Error:[/red] Must provide either --to-store <id> or -s <id> -s <id> for multi-stop analysis.")
+        raise click.Abort()
+
+    planner = TripPlannerService()
+    t_model = TrafficModel(traffic_model)
+    t_mode = TravelMode(mode)
+
+    dest_desc = f"{len(stores)} stores" if stores else f"Store #{store_id}"
+    with console.status(f"[cyan]Analyzing departure time curves to {dest_desc}...[/cyan]"):
+        try:
+            pred = asyncio.run(
+                planner.predict_departures(
+                    origin_str=origin_input,
+                    destination_store_id=store_id,
+                    store_ids=list(stores) if stores else None,
+                    traffic_model=t_model,
+                    mode=t_mode,
+                )
+            )
+        except ValueError as err:
+            console.print(f"[red]Error:[/red] {err}")
+            raise click.Abort()
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold green]Predictive Departure Time Analysis ({t_model.value.title()})[/bold green]\n"
+            f"[dim]Origin:[/dim] [bold]{pred.origin_label}[/bold]\n"
+            f"[dim]Destination:[/dim] [bold]{pred.destination_label}[/bold]\n"
+            f"[dim]Trip Distance:[/dim] {pred.travel_distance_miles:.1f} mi ({pred.travel_distance_km:.1f} km)\n"
+            f"[dim]Free-Flow Base Time:[/dim] {pred.base_duration_text}\n\n"
+            f"[bold green]Best Departure Window:[/bold green] [bold white]{pred.best_departure_time}[/bold white]\n"
+            f"[bold red]Worst Departure Window:[/bold red] [bold white]{pred.worst_departure_time}[/bold white]\n"
+            f"[bold cyan]Potential Time Saved (Off-Peak):[/bold cyan] [bold]{pred.max_time_saved_minutes:.0f} mins[/bold]",
+            title="Predictive Departure Time Advisor",
+            border_style="green",
+        )
+    )
+
+    table = Table(title="Diurnal Departure Time Windows", show_header=True, header_style="bold cyan")
+    table.add_column("Departure Window", style="bold", min_width=25)
+    table.add_column("Condition", width=11, justify="center")
+    table.add_column("Duration", width=10, justify="right")
+    table.add_column("Delay", width=8, justify="right")
+    table.add_column("Saved", width=8, justify="right")
+    table.add_column("Best", width=8, justify="center")
+
+    for w in pred.windows:
+        cond_style = (
+            "green" if w.condition.value == "clear"
+            else "yellow" if w.condition.value == "moderate"
+            else "red" if w.condition.value == "heavy"
+            else "bold red"
+        )
+        cond_badge = f"[{cond_style}]{w.condition.value.upper()}[/{cond_style}]"
+        delay_text = f"+{w.delay_minutes:.0f} mins" if w.delay_minutes > 0 else "0 min"
+        saved_text = f"{w.time_saved_vs_worst_minutes:.0f} mins" if w.time_saved_vs_worst_minutes > 0 else "-"
+        rec = "[bold green]YES ★[/bold green]" if w.is_recommended else "-"
+
+        table.add_row(
+            w.departure_label,
+            cond_badge,
+            w.duration_in_traffic_text,
+            delay_text,
+            saved_text,
+            rec,
+        )
+
+    console.print(table)
+    console.print()
+
+
 @cli.command()
 @click.option("--host", default=settings.host, show_default=True, help="Host to bind server")
 @click.option("--port", default=settings.port, show_default=True, help="Port to bind server")
@@ -427,3 +565,4 @@ def serve(host: str, port: int) -> None:
 
 if __name__ == "__main__":
     cli()
+

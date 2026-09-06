@@ -4,10 +4,11 @@
 # Created: 2026-09-06
 
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from src.models.directions import RouteStep, TravelMode
 from src.models.geo import Coordinates
 from src.models.store import StoreSummary
+from src.models.traffic import TrafficCondition, TrafficModel, TrafficSegment
 
 
 class WaypointNode(BaseModel):
@@ -32,10 +33,20 @@ class TripLeg(BaseModel):
     distance_km: float = Field(..., description="Leg distance in kilometers")
     distance_miles: float = Field(..., description="Leg distance in miles")
     distance_text: str = Field(..., description="Formatted distance string, e.g. '4.2 mi'")
-    duration_minutes: float = Field(..., description="Leg duration in minutes")
+    duration_minutes: float = Field(..., description="Leg duration in minutes (free flow)")
     duration_text: str = Field(..., description="Formatted duration string, e.g. '12 mins'")
+    duration_in_traffic_minutes: Optional[float] = Field(None, description="Leg duration under traffic in minutes")
+    duration_in_traffic_text: Optional[str] = Field(None, description="Formatted duration in traffic e.g. '17 mins'")
+    traffic_condition: TrafficCondition = Field(TrafficCondition.CLEAR, description="Traffic congestion level for this leg")
+    traffic_delay_minutes: float = Field(0.0, description="Delay in minutes attributable to traffic congestion")
     steps: List[RouteStep] = Field(default_factory=list, description="Turn-by-turn navigation steps")
     polyline: str = Field("", description="Google-encoded polyline string for this leg")
+    traffic_segments: List[TrafficSegment] = Field(default_factory=list, description="Color-coded traffic segments along the leg")
+
+    @computed_field
+    @property
+    def traffic_delay_seconds(self) -> int:
+        return int(round(self.traffic_delay_minutes * 60))
 
 
 class TripSavings(BaseModel):
@@ -58,6 +69,8 @@ class TripPlanRequest(BaseModel):
     round_trip: bool = Field(True, description="Whether to return to origin after visiting all stores")
     optimize: bool = Field(True, description="Whether to apply TSP optimization to minimize total distance")
     travel_mode: TravelMode = Field(TravelMode.DRIVING, description="Travel mode (driving, walking, bicycling, transit)")
+    departure_time: Optional[str] = Field(None, description="Departure time e.g. 'now', '08:30', '17:30', or ISO datetime")
+    traffic_model: TrafficModel = Field(TrafficModel.BEST_GUESS, description="Traffic prediction model heuristic")
 
 
 class TripPlanResponse(BaseModel):
@@ -74,11 +87,35 @@ class TripPlanResponse(BaseModel):
     total_distance_km: float = Field(..., description="Cumulative distance in kilometers")
     total_distance_miles: float = Field(..., description="Cumulative distance in miles")
     total_distance_text: str = Field(..., description="Formatted total distance string")
-    total_duration_minutes: float = Field(..., description="Cumulative travel duration in minutes")
+    total_duration_minutes: float = Field(..., description="Cumulative free-flow travel duration in minutes")
     total_duration_text: str = Field(..., description="Formatted total duration string")
+    total_duration_in_traffic_minutes: Optional[float] = Field(None, description="Cumulative travel duration under traffic")
+    total_duration_in_traffic_text: Optional[str] = Field(None, description="Formatted duration in traffic string")
+    total_traffic_delay_minutes: float = Field(0.0, description="Cumulative traffic delay in minutes")
+    traffic_condition: TrafficCondition = Field(TrafficCondition.CLEAR, description="Overall trip traffic condition")
+    departure_time: Optional[str] = Field(None, description="Departure time used for calculation")
+    traffic_model: TrafficModel = Field(TrafficModel.BEST_GUESS, description="Traffic model heuristic applied")
     overview_polyline: str = Field(..., description="Composite Google-encoded polyline covering the entire trip")
     savings: Optional[TripSavings] = Field(None, description="Savings metrics if route was optimized")
     google_maps_url: Optional[str] = Field(None, description="Universal Google Maps mobile turn-by-turn navigation URL")
+
+    @computed_field
+    @property
+    def total_traffic_delay_seconds(self) -> int:
+        return int(round(self.total_traffic_delay_minutes * 60))
+
+    @computed_field
+    @property
+    def total_duration_seconds(self) -> int:
+        return int(round(self.total_duration_minutes * 60))
+
+    @computed_field
+    @property
+    def total_duration_in_traffic_seconds(self) -> Optional[int]:
+        if self.total_duration_in_traffic_minutes is not None:
+            return int(round(self.total_duration_in_traffic_minutes * 60))
+        return None
+
 
 
 # Model alias for convenience

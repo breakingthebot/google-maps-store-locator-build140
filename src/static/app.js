@@ -30,6 +30,11 @@
     googleMarkers: [],
     googleDirectionsRenderer: null,
     svgMapScale: 1.0,
+    // Real-Time Traffic Layer & Predictive Departure State
+    trafficLayerEnabled: false,
+    departureTime: "now",
+    trafficModel: "best_guess",
+    trafficOverlayData: null,
   };
 
   // DOM Elements
@@ -53,6 +58,18 @@
   const storeModal = document.getElementById("store-modal");
   const btnCloseModal = document.getElementById("btn-close-modal");
 
+  // Traffic & Departure Elements (Single Route)
+  const chipTrafficLayer = document.getElementById("chip-traffic-layer");
+  const dirDepartureSelect = document.getElementById("dir-departure-select");
+  const dirTrafficModel = document.getElementById("dir-traffic-model");
+  const btnDirAdvisor = document.getElementById("btn-dir-advisor");
+  const directionsTrafficBadge = document.getElementById("directions-traffic-badge");
+  const directionsTrafficText = document.getElementById("directions-traffic-text");
+  const directionsTrafficDelay = document.getElementById("directions-traffic-delay");
+  const directionsAdvisorBox = document.getElementById("directions-advisor-box");
+  const btnCloseDirAdvisor = document.getElementById("btn-close-dir-advisor");
+  const dirAdvisorContent = document.getElementById("dir-advisor-content");
+
   // Trip Planner DOM Elements
   const tripBar = document.getElementById("trip-bar");
   const tripCountBadge = document.getElementById("trip-count-badge");
@@ -63,15 +80,27 @@
   const btnCloseTripModal = document.getElementById("btn-close-trip-modal");
   const tripRoundTrip = document.getElementById("trip-round-trip");
   const tripOptimize = document.getElementById("trip-optimize");
+  const tripDepartureSelect = document.getElementById("trip-departure-select");
+  const tripTrafficModel = document.getElementById("trip-traffic-model");
   const tripSavingsBanner = document.getElementById("trip-savings-banner");
   const tripSavingsTitle = document.getElementById("trip-savings-title");
   const tripSavingsDesc = document.getElementById("trip-savings-desc");
+  const tripTrafficBanner = document.getElementById("trip-traffic-banner");
+  const tripTrafficIcon = document.getElementById("trip-traffic-icon");
+  const tripTrafficTitle = document.getElementById("trip-traffic-title");
+  const tripTrafficDesc = document.getElementById("trip-traffic-desc");
+  const tripTrafficDelayBadge = document.getElementById("trip-traffic-delay-badge");
   const tripStatDistance = document.getElementById("trip-stat-distance");
   const tripStatDuration = document.getElementById("trip-stat-duration");
+  const tripStatTrafficSub = document.getElementById("trip-stat-traffic-sub");
   const tripStatStops = document.getElementById("trip-stat-stops");
   const tripStatMode = document.getElementById("trip-stat-mode");
   const tripStopsTimeline = document.getElementById("trip-stops-timeline");
   const tripLegsContainer = document.getElementById("trip-legs-container");
+  const tripBtnAdvisor = document.getElementById("trip-btn-advisor");
+  const tripAdvisorPopover = document.getElementById("trip-advisor-popover");
+  const btnCloseTripAdvisor = document.getElementById("btn-close-trip-advisor");
+  const tripAdvisorBars = document.getElementById("trip-advisor-bars");
 
   // Initialize
   async function init() {
@@ -125,11 +154,104 @@
     document.querySelectorAll(".filter-chip").forEach((chip) => {
       chip.addEventListener("click", () => {
         const filterKey = chip.getAttribute("data-filter");
+        if (filterKey === "traffic_layer") return; // Handled separately
         state.filters[filterKey] = !state.filters[filterKey];
         chip.classList.toggle("active", state.filters[filterKey]);
         performSearch();
       });
     });
+
+    // Traffic Layer Chip Toggle
+    if (chipTrafficLayer) {
+      chipTrafficLayer.addEventListener("click", async () => {
+        state.trafficLayerEnabled = !state.trafficLayerEnabled;
+        chipTrafficLayer.classList.toggle("active", state.trafficLayerEnabled);
+        if (state.trafficLayerEnabled && !state.trafficOverlayData) {
+          try {
+            const res = await fetch("/api/traffic/overlay");
+            if (res.ok) {
+              const data = await res.json();
+              state.trafficOverlayData = data.arterials || [];
+            }
+          } catch (e) {
+            console.warn("Failed to fetch traffic overlay data:", e);
+          }
+        }
+        renderMap();
+      });
+    }
+
+    // Departure & Traffic Model Selectors (Single Route)
+    if (dirDepartureSelect) {
+      dirDepartureSelect.addEventListener("change", (e) => {
+        state.departureTime = e.target.value;
+        if (state.selectedStoreId) {
+          fetchDirections(state.selectedStoreId, state.currentTravelMode);
+        }
+      });
+    }
+
+    if (dirTrafficModel) {
+      dirTrafficModel.addEventListener("change", (e) => {
+        state.trafficModel = e.target.value;
+        if (state.selectedStoreId) {
+          fetchDirections(state.selectedStoreId, state.currentTravelMode);
+        }
+      });
+    }
+
+    // Departure Advisor (Single Route)
+    if (btnDirAdvisor) {
+      btnDirAdvisor.addEventListener("click", () => {
+        if (!directionsAdvisorBox) return;
+        const isHidden = directionsAdvisorBox.classList.contains("hidden");
+        if (isHidden) {
+          directionsAdvisorBox.classList.remove("hidden");
+          fetchDirectionsAdvisor();
+        } else {
+          directionsAdvisorBox.classList.add("hidden");
+        }
+      });
+    }
+
+    if (btnCloseDirAdvisor) {
+      btnCloseDirAdvisor.addEventListener("click", () => {
+        if (directionsAdvisorBox) directionsAdvisorBox.classList.add("hidden");
+      });
+    }
+
+    // Trip Departure & Traffic Selectors
+    if (tripDepartureSelect) {
+      tripDepartureSelect.addEventListener("change", (e) => {
+        state.departureTime = e.target.value;
+      });
+    }
+
+    if (tripTrafficModel) {
+      tripTrafficModel.addEventListener("change", (e) => {
+        state.trafficModel = e.target.value;
+      });
+    }
+
+    // Trip Departure Advisor
+    if (tripBtnAdvisor) {
+      tripBtnAdvisor.addEventListener("click", () => {
+        if (!tripAdvisorPopover) return;
+        const isHidden = tripAdvisorPopover.classList.contains("hidden");
+        if (isHidden) {
+          tripAdvisorPopover.classList.remove("hidden");
+          fetchTripAdvisor();
+        } else {
+          tripAdvisorPopover.classList.add("hidden");
+        }
+      });
+    }
+
+    if (btnCloseTripAdvisor) {
+      btnCloseTripAdvisor.addEventListener("click", () => {
+        if (tripAdvisorPopover) tripAdvisorPopover.classList.add("hidden");
+      });
+    }
 
     // Travel Mode Buttons
     document.querySelectorAll("[data-mode]").forEach((btn) => {
@@ -145,6 +267,7 @@
     // Modals & Drawer Closes
     btnCloseDirections.addEventListener("click", () => {
       directionsDrawer.classList.remove("open");
+      if (directionsAdvisorBox) directionsAdvisorBox.classList.add("hidden");
       state.activeDirections = null;
       renderMap();
     });
@@ -483,15 +606,56 @@
     directionsSteps.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-muted);">Calculating turn-by-turn route...</div>`;
 
     try {
-      const url = `/api/directions?origin_lat=${state.origin.lat}&origin_lng=${state.origin.lng}&destination_store_id=${storeId}&mode=${mode}`;
+      const depTime = dirDepartureSelect ? dirDepartureSelect.value : state.departureTime;
+      const trafModel = dirTrafficModel ? dirTrafficModel.value : state.trafficModel;
+      const url = `/api/directions?origin_lat=${state.origin.lat}&origin_lng=${state.origin.lng}&destination_store_id=${storeId}&mode=${mode}&departure_time=${encodeURIComponent(depTime)}&traffic_model=${encodeURIComponent(trafModel)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Directions request failed");
       const result = await res.json();
 
       state.activeDirections = result;
       directionsDistance.textContent = result.distance_text;
-      directionsDuration.textContent = `Estimated duration: ${result.duration_text}`;
       directionsModeTitle.textContent = `${mode.charAt(0).toUpperCase() + mode.slice(1)} Route`;
+
+      // Traffic Badge and Durations
+      if (mode === "driving" && result.traffic_condition) {
+        directionsTrafficBadge.classList.remove("hidden");
+        const cond = result.traffic_condition.toLowerCase();
+        directionsTrafficText.textContent = `Traffic: ${result.traffic_condition.toUpperCase()} Flow`;
+        const delayMins = Math.round((result.traffic_delay_seconds || 0) / 60);
+        directionsTrafficDelay.textContent = delayMins > 0 ? `+${delayMins} min delay` : "No Delay";
+
+        if (cond === "clear") {
+          directionsTrafficBadge.style.background = "#ecfdf5";
+          directionsTrafficBadge.style.color = "#065f46";
+          directionsTrafficBadge.style.borderColor = "#a7f3d0";
+          directionsTrafficDelay.style.color = "#047857";
+        } else if (cond === "moderate") {
+          directionsTrafficBadge.style.background = "#fffbeb";
+          directionsTrafficBadge.style.color = "#92400e";
+          directionsTrafficBadge.style.borderColor = "#fde68a";
+          directionsTrafficDelay.style.color = "#b45309";
+        } else if (cond === "heavy") {
+          directionsTrafficBadge.style.background = "#fff7ed";
+          directionsTrafficBadge.style.color = "#9a3412";
+          directionsTrafficBadge.style.borderColor = "#fed7aa";
+          directionsTrafficDelay.style.color = "#c2410c";
+        } else if (cond === "severe") {
+          directionsTrafficBadge.style.background = "#fef2f2";
+          directionsTrafficBadge.style.color = "#991b1b";
+          directionsTrafficBadge.style.borderColor = "#fecaca";
+          directionsTrafficDelay.style.color = "#dc2626";
+        }
+
+        if (result.duration_in_traffic_text) {
+          directionsDuration.textContent = `Duration: ${result.duration_in_traffic_text} (In Traffic)`;
+        } else {
+          directionsDuration.textContent = `Estimated duration: ${result.duration_text}`;
+        }
+      } else {
+        directionsTrafficBadge.classList.add("hidden");
+        directionsDuration.textContent = `Estimated duration: ${result.duration_text}`;
+      }
 
       // Render Steps
       directionsSteps.innerHTML = "";
@@ -513,6 +677,77 @@
       console.error("Failed to load directions:", err);
       directionsSteps.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--danger);">Failed to calculate navigation route.</div>`;
     }
+  }
+
+  // Predictive Departure Advisor (Single Direction)
+  async function fetchDirectionsAdvisor() {
+    if (!state.selectedStoreId) return;
+    dirAdvisorContent.innerHTML = `<div style="text-align: center; color: #166534; padding: 6px;">Simulating diurnal congestion curve...</div>`;
+    try {
+      const url = `/api/traffic/predict?origin=${state.origin.lat},${state.origin.lng}&destination_store_id=${state.selectedStoreId}&travel_mode=${state.currentTravelMode}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Advisor lookup failed");
+      const data = await res.json();
+      renderAdvisorBars(data, dirAdvisorContent);
+    } catch (e) {
+      dirAdvisorContent.innerHTML = `<div style="color: var(--danger); padding: 6px;">Failed to calculate departure forecast.</div>`;
+    }
+  }
+
+  // Predictive Departure Advisor (Multi-Stop Trip)
+  async function fetchTripAdvisor() {
+    if (state.tripStoreIds.length === 0) return;
+    tripAdvisorBars.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 10px;">Simulating trip departure windows...</div>`;
+    try {
+      const url = `/api/traffic/predict?origin=${state.origin.lat},${state.origin.lng}&store_ids=${state.tripStoreIds.join(",")}&travel_mode=${state.currentTravelMode}&round_trip=${tripRoundTrip.checked}&optimize=${tripOptimize.checked}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Advisor lookup failed");
+      const data = await res.json();
+      renderAdvisorBars(data, tripAdvisorBars);
+    } catch (e) {
+      tripAdvisorBars.innerHTML = `<div style="color: var(--danger); padding: 8px;">Failed to calculate departure forecast.</div>`;
+    }
+  }
+
+  // Helper to render horizontal comparison bars for departure windows
+  function renderAdvisorBars(data, container) {
+    const maxDur = Math.max(...data.predictions.map((p) => p.duration_in_traffic_seconds), 1);
+    const bestSavedMins = Math.round(data.max_time_saved_seconds / 60);
+
+    let html = `
+      <div style="margin-bottom: 8px; font-size: 0.8rem; font-weight: 600; line-height: 1.4;">
+        💡 Recommendation: <span style="color: #15803d;">${escapeHtml(data.best_window.label)}</span>
+        ${bestSavedMins > 0 ? `saves ~<strong>${bestSavedMins} mins</strong> over ${escapeHtml(data.worst_window.label)}.` : "has minimal congestion."}
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+    `;
+
+    data.predictions.forEach((pred) => {
+      const pct = Math.max(18, Math.round((pred.duration_in_traffic_seconds / maxDur) * 100));
+      const isBest = pred.window_key === data.best_window.window_key;
+      const isWorst = pred.window_key === data.worst_window.window_key;
+      const barColor = isBest ? "#10b981" : isWorst ? "#ef4444" : "#f59e0b";
+      const badge = isBest
+        ? `<span style="font-size: 0.68rem; background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 8px; font-weight: 700; margin-left: 6px;">BEST TIME</span>`
+        : isWorst
+        ? `<span style="font-size: 0.68rem; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 8px; font-weight: 700; margin-left: 6px;">PEAK RUSH</span>`
+        : "";
+
+      html += `
+        <div style="font-size: 0.76rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span><strong>${escapeHtml(pred.label)}</strong> (${pred.time_range}) ${badge}</span>
+            <span><strong>${pred.duration_in_traffic_text}</strong> <span style="color: var(--text-muted); font-size: 0.72rem;">(${pred.traffic_condition})</span></span>
+          </div>
+          <div style="width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+            <div style="width: ${pct}%; height: 100%; background: ${barColor}; border-radius: 4px; transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
   }
 
   // =========================================================================
@@ -585,12 +820,16 @@
     btnPlanTrip.textContent = "Optimizing Route...";
 
     try {
+      const depTime = tripDepartureSelect ? tripDepartureSelect.value : state.departureTime;
+      const trafModel = tripTrafficModel ? tripTrafficModel.value : state.trafficModel;
       const payload = {
         origin: `${state.origin.lat},${state.origin.lng}`,
         store_ids: state.tripStoreIds,
         round_trip: tripRoundTrip.checked,
         optimize: tripOptimize.checked,
         travel_mode: state.currentTravelMode,
+        departure_time: depTime,
+        traffic_model: trafModel,
       };
 
       const res = await fetch("/api/trip/plan", {
@@ -632,9 +871,56 @@
       tripSavingsBanner.classList.add("hidden");
     }
 
+    // Traffic Flow Banner
+    if (plan.traffic_condition && plan.travel_mode === "driving") {
+      tripTrafficBanner.classList.remove("hidden");
+      const cond = plan.traffic_condition.toLowerCase();
+      const delayMins = Math.round((plan.total_traffic_delay_seconds || 0) / 60);
+      tripTrafficTitle.textContent = `Traffic Flow: ${plan.traffic_condition.toUpperCase()} (${plan.traffic_model ? plan.traffic_model.replace('_', ' ') : 'best guess'})`;
+      tripTrafficDesc.textContent = delayMins > 0
+        ? `Estimated +${delayMins} min congestion delay across all route legs.`
+        : "Optimal traffic flow with minimal delay along this multi-stop itinerary.";
+      tripTrafficDelayBadge.textContent = delayMins > 0 ? `+${delayMins}m delay` : "Smooth Flow";
+
+      if (cond === "clear") {
+        tripTrafficBanner.style.background = "#ecfdf5";
+        tripTrafficBanner.style.borderColor = "#a7f3d0";
+        tripTrafficTitle.style.color = "#065f46";
+        tripTrafficDelayBadge.style.background = "#d1fae5";
+        tripTrafficDelayBadge.style.color = "#065f46";
+      } else if (cond === "moderate") {
+        tripTrafficBanner.style.background = "#fffbeb";
+        tripTrafficBanner.style.borderColor = "#fde68a";
+        tripTrafficTitle.style.color = "#92400e";
+        tripTrafficDelayBadge.style.background = "#fef3c7";
+        tripTrafficDelayBadge.style.color = "#92400e";
+      } else if (cond === "heavy") {
+        tripTrafficBanner.style.background = "#fff7ed";
+        tripTrafficBanner.style.borderColor = "#fed7aa";
+        tripTrafficTitle.style.color = "#9a3412";
+        tripTrafficDelayBadge.style.background = "#ffedd5";
+        tripTrafficDelayBadge.style.color = "#9a3412";
+      } else if (cond === "severe") {
+        tripTrafficBanner.style.background = "#fef2f2";
+        tripTrafficBanner.style.borderColor = "#fecaca";
+        tripTrafficTitle.style.color = "#991b1b";
+        tripTrafficDelayBadge.style.background = "#fee2e2";
+        tripTrafficDelayBadge.style.color = "#991b1b";
+      }
+
+      if (tripStatTrafficSub) {
+        tripStatTrafficSub.textContent = delayMins > 0
+          ? `(${plan.total_duration_in_traffic_text} in traffic)`
+          : "clear flow";
+      }
+    } else {
+      tripTrafficBanner.classList.add("hidden");
+      if (tripStatTrafficSub) tripStatTrafficSub.textContent = "";
+    }
+
     // Stats Grid
     tripStatDistance.textContent = plan.total_distance_text;
-    tripStatDuration.textContent = plan.total_duration_text;
+    tripStatDuration.textContent = plan.total_duration_in_traffic_text || plan.total_duration_text;
     tripStatStops.textContent = `${plan.stops.length} stops (${plan.legs.length} legs)`;
     tripStatMode.textContent = plan.travel_mode.charAt(0).toUpperCase() + plan.travel_mode.slice(1);
 
@@ -669,10 +955,14 @@
     plan.legs.forEach((leg, idx) => {
       const card = document.createElement("div");
       card.className = "leg-card";
+      const legDelayMins = Math.round((leg.traffic_delay_seconds || 0) / 60);
+      const legDelayBadge = legDelayMins > 0
+        ? ` <span style="color: #b45309; font-weight: 600; font-size: 0.75rem;">(+${legDelayMins}m traffic)</span>`
+        : "";
       card.innerHTML = `
         <div class="leg-header">
           <span class="leg-title">Leg ${idx + 1}: ${escapeHtml(leg.start_node.name.slice(0, 24))} &rarr; ${escapeHtml(leg.end_node.name.slice(0, 24))}</span>
-          <span class="leg-meta">${leg.distance_text} · ${leg.duration_text}</span>
+          <span class="leg-meta">${leg.distance_text} · ${leg.duration_in_traffic_text || leg.duration_text}${legDelayBadge}</span>
         </div>
       `;
       tripLegsContainer.appendChild(card);
@@ -823,31 +1113,71 @@
 
     const originPt = project(origin.lat, origin.lng);
 
-    // Build Route Polyline Path
+    // Build Route Polyline Path with Real-Time Traffic Segments
     let polylineSvg = "";
 
     // Multi-stop trip polyline takes precedence if active
-    if (state.activeTripPlan && state.activeTripPlan.overview_polyline) {
-      const tripCoords = decodePolylineJs(state.activeTripPlan.overview_polyline);
-      if (tripCoords.length > 0) {
-        const pts = tripCoords.map((c) => {
-          const pt = project(c.lat, c.lng);
+    if (state.activeTripPlan) {
+      let tripSegsSvg = "";
+      if (state.activeTripPlan.legs && state.activeTripPlan.legs.some((l) => l.traffic_segments && l.traffic_segments.length > 0)) {
+        state.activeTripPlan.legs.forEach((leg) => {
+          if (leg.traffic_segments && leg.traffic_segments.length > 0) {
+            leg.traffic_segments.forEach((seg) => {
+              const segCoords = decodePolylineJs(seg.polyline);
+              if (segCoords.length >= 2) {
+                const pts = segCoords.map((c) => {
+                  const pt = project(c.lat, c.lng);
+                  return `${pt.x},${pt.y}`;
+                }).join(" ");
+                tripSegsSvg += `
+                  <polyline points="${pts}" fill="none" stroke="${seg.color_hex}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+                  <polyline points="${pts}" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3" />
+                `;
+              }
+            });
+          }
+        });
+      }
+
+      if (tripSegsSvg) {
+        polylineSvg = tripSegsSvg;
+      } else if (state.activeTripPlan.overview_polyline) {
+        const tripCoords = decodePolylineJs(state.activeTripPlan.overview_polyline);
+        if (tripCoords.length > 0) {
+          const pts = tripCoords.map((c) => {
+            const pt = project(c.lat, c.lng);
+            return `${pt.x},${pt.y}`;
+          });
+          polylineSvg = `
+            <polyline points="${pts.join(" ")}" fill="none" stroke="#7c3aed" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+            <polyline points="${pts.join(" ")}" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          `;
+        }
+      }
+    } else if (state.activeDirections) {
+      if (state.activeDirections.traffic_segments && state.activeDirections.traffic_segments.length > 0) {
+        polylineSvg = state.activeDirections.traffic_segments.map((seg) => {
+          const segCoords = decodePolylineJs(seg.polyline);
+          if (segCoords.length < 2) return "";
+          const pts = segCoords.map((c) => {
+            const pt = project(c.lat, c.lng);
+            return `${pt.x},${pt.y}`;
+          }).join(" ");
+          return `
+            <polyline points="${pts}" fill="none" stroke="${seg.color_hex}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
+            <polyline points="${pts}" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.35" />
+          `;
+        }).join("");
+      } else if (state.activeDirections.route_coordinates) {
+        const pts = state.activeDirections.route_coordinates.map((c) => {
+          const pt = project(c.latitude, c.longitude);
           return `${pt.x},${pt.y}`;
         });
         polylineSvg = `
-          <polyline points="${pts.join(" ")}" fill="none" stroke="#7c3aed" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
-          <polyline points="${pts.join(" ")}" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          <polyline points="${pts.join(" ")}" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+          <polyline points="${pts.join(" ")}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         `;
       }
-    } else if (state.activeDirections && state.activeDirections.route_coordinates) {
-      const pts = state.activeDirections.route_coordinates.map((c) => {
-        const pt = project(c.latitude, c.longitude);
-        return `${pt.x},${pt.y}`;
-      });
-      polylineSvg = `
-        <polyline points="${pts.join(" ")}" fill="none" stroke="#2563eb" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
-        <polyline points="${pts.join(" ")}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-      `;
     }
 
     // Build Store Pin Markers
@@ -882,6 +1212,26 @@
       `;
     });
 
+    // Render Real-Time Arterial Traffic Layer if active
+    let trafficOverlaySvg = "";
+    if (state.trafficLayerEnabled) {
+      if (state.trafficOverlayData && state.trafficOverlayData.length > 0) {
+        state.trafficOverlayData.forEach((art) => {
+          const p1 = project(art.start_lat, art.start_lng);
+          const p2 = project(art.end_lat, art.end_lng);
+          trafficOverlaySvg += `
+            <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${art.color_hex}" stroke-width="7" stroke-linecap="round" opacity="0.8" />
+            <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.5" />
+          `;
+        });
+      } else {
+        trafficOverlaySvg = `
+          <line x1="0" y1="${height * 0.45}" x2="${width}" y2="${height * 0.45}" stroke="#f59e0b" stroke-width="7" opacity="0.8" />
+          <line x1="${width * 0.52}" y1="0" x2="${width * 0.52}" y2="${height}" stroke="#ef4444" stroke-width="7" opacity="0.8" />
+        `;
+      }
+    }
+
     // Grid / Map Background Aesthetics
     mapTarget.innerHTML = `
       <div class="svg-map-wrapper">
@@ -898,6 +1248,9 @@
           <line x1="0" y1="${height * 0.45}" x2="${width}" y2="${height * 0.45}" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="8,6" />
           <line x1="${width * 0.52}" y1="0" x2="${width * 0.52}" y2="${height}" stroke="#ffffff" stroke-width="10" />
           <line x1="${width * 0.52}" y1="0" x2="${width * 0.52}" y2="${height}" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="8,6" />
+
+          <!-- Real-Time Traffic Arterial Overlay (When active) -->
+          ${trafficOverlaySvg}
 
           <!-- Active Navigation Polyline -->
           ${polylineSvg}
@@ -923,11 +1276,12 @@
           <button class="map-tool-btn" id="btn-center-origin" title="Center Origin" style="font-size: 0.8rem;">📍</button>
         </div>
 
-        <div style="position: absolute; bottom: 12px; left: 16px; background: rgba(255,255,255,0.9); padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--border); box-shadow: var(--shadow);">
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; margin-right: 4px;"></span> Open
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; margin: 0 4px 0 10px;"></span> Closed
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #7c3aed; margin: 0 4px 0 10px;"></span> Trip Stop
-          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #2563eb; margin: 0 4px 0 10px;"></span> Origin
+        <div style="position: absolute; bottom: 12px; left: 16px; background: rgba(255,255,255,0.92); padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; align-items: center; gap: 8px;">
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; vertical-align: middle; margin-right: 3px;"></span> Open</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; vertical-align: middle; margin-right: 3px;"></span> Closed</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #7c3aed; vertical-align: middle; margin-right: 3px;"></span> Trip Stop</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #2563eb; vertical-align: middle; margin-right: 3px;"></span> Origin</span>
+          ${state.trafficLayerEnabled ? `<span><span style="display: inline-block; width: 14px; height: 4px; border-radius: 2px; background: #f59e0b; vertical-align: middle; margin-right: 3px;"></span> Live Traffic</span>` : ""}
         </div>
       </div>
     `;

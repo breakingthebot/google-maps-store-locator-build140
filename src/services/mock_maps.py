@@ -5,9 +5,10 @@
 
 import hashlib
 import math
-from typing import Optional
+from typing import Optional, Union
 from src.models.directions import DirectionsResult, RouteStep, TravelMode
 from src.models.geo import Coordinates, GeocodeResult
+from src.models.traffic import TrafficCondition, TrafficModel
 from src.utils.distance import (
     calculate_bearing,
     haversine_distance_km,
@@ -133,8 +134,13 @@ class MockGoogleMapsService:
         mode: TravelMode = TravelMode.DRIVING,
         origin_name: str = "Origin",
         destination_name: str = "Destination",
+        departure_time: Optional[Union[str, int]] = None,
+        traffic_model: TrafficModel = TrafficModel.BEST_GUESS,
     ) -> DirectionsResult:
-        """Calculate turn-by-turn routing between origin and destination coordinates."""
+        """Calculate turn-by-turn routing between origin and destination coordinates with optional traffic modeling."""
+        from src.models.traffic import TrafficCondition, TrafficModel
+        from src.services.traffic_engine import TrafficEngine
+
         distance_km = haversine_distance_km(
             origin.latitude, origin.longitude, destination.latitude, destination.longitude
         )
@@ -163,6 +169,28 @@ class MockGoogleMapsService:
         else:
             dist_text = f"{distance_miles:.1f} mi"
 
+        # Traffic delay modeling
+        dec_hour, dep_label, _ = TrafficEngine.parse_departure_time(departure_time)
+        factor, traffic_cond = TrafficEngine.calculate_congestion_factor(
+            decimal_hour=dec_hour, traffic_model=traffic_model, mode=mode
+        )
+
+        dur_in_traffic_sec = int(round(duration_seconds * factor))
+        delay_sec = max(0, dur_in_traffic_sec - duration_seconds)
+
+        if dur_in_traffic_sec < 60:
+            dur_traffic_text = "1 min"
+        elif dur_in_traffic_sec < 3600:
+            t_mins = math.ceil(dur_in_traffic_sec / 60)
+            dur_traffic_text = f"{t_mins} mins"
+        else:
+            t_hrs = dur_in_traffic_sec // 3600
+            t_mins = math.ceil((dur_in_traffic_sec % 3600) / 60)
+            dur_traffic_text = f"{t_hrs} hr {t_mins} mins" if t_mins > 0 else f"{t_hrs} hr"
+
+        delay_mins_count = math.ceil(delay_sec / 60)
+        delay_text = f"+{delay_mins_count} min" if delay_mins_count == 1 else f"+{delay_mins_count} mins" if delay_mins_count > 0 else "0 min"
+
         # Interpolate intermediate path coordinates for polyline
         num_waypoints = max(3, min(8, int(distance_km * 2) + 2))
         path_points: list[tuple[float, float]] = []
@@ -184,6 +212,15 @@ class MockGoogleMapsService:
 
         overview_polyline = encode_polyline(path_points)
 
+        # Generate traffic-colored route segments
+        traffic_segments = TrafficEngine.segment_route_traffic(
+            route_coords=route_coords,
+            total_distance_meters=int(distance_km * 1000),
+            base_duration_seconds=duration_seconds,
+            overall_factor=factor,
+            overall_condition=traffic_cond,
+        )
+
         # Synthesize turn-by-turn steps
         cardinal = (
             "North" if 315 <= bearing or bearing < 45
@@ -193,6 +230,7 @@ class MockGoogleMapsService:
         )
         step_dist_meters = max(50, int((distance_km * 1000) / 4))
         step_dur_sec = max(20, duration_seconds // 4)
+        step_traffic_sec = max(20, int(dur_in_traffic_sec / 4))
 
         steps = [
             RouteStep(
@@ -204,6 +242,9 @@ class MockGoogleMapsService:
                 start_location=route_coords[0],
                 end_location=route_coords[1] if len(route_coords) > 1 else route_coords[0],
                 travel_mode=mode,
+                duration_in_traffic_seconds=step_traffic_sec,
+                duration_in_traffic_text=f"{max(1, step_traffic_sec // 60)} min",
+                traffic_condition=traffic_cond,
             ),
             RouteStep(
                 instruction=f"Turn right onto Main Boulevard and continue for {round(distance_miles * 0.5, 1)} mi",
@@ -214,6 +255,9 @@ class MockGoogleMapsService:
                 start_location=route_coords[1] if len(route_coords) > 1 else route_coords[0],
                 end_location=route_coords[-2] if len(route_coords) > 2 else route_coords[-1],
                 travel_mode=mode,
+                duration_in_traffic_seconds=step_traffic_sec * 2,
+                duration_in_traffic_text=f"{max(1, (step_traffic_sec * 2) // 60)} mins",
+                traffic_condition=traffic_cond,
             ),
             RouteStep(
                 instruction=f"Turn left onto the commercial access drive toward {destination_name}",
@@ -224,6 +268,9 @@ class MockGoogleMapsService:
                 start_location=route_coords[-2] if len(route_coords) > 2 else route_coords[0],
                 end_location=route_coords[-1],
                 travel_mode=mode,
+                duration_in_traffic_seconds=step_traffic_sec,
+                duration_in_traffic_text=f"{max(1, step_traffic_sec // 60)} min",
+                traffic_condition=traffic_cond,
             ),
             RouteStep(
                 instruction=f"Arrive at {destination_name}. Destination will be on your right.",
@@ -234,6 +281,9 @@ class MockGoogleMapsService:
                 start_location=route_coords[-1],
                 end_location=route_coords[-1],
                 travel_mode=mode,
+                duration_in_traffic_seconds=0,
+                duration_in_traffic_text="0 min",
+                traffic_condition=TrafficCondition.CLEAR,
             ),
         ]
 
@@ -246,7 +296,13 @@ class MockGoogleMapsService:
             distance_text=dist_text,
             total_duration_seconds=duration_seconds,
             duration_text=duration_text,
+            duration_in_traffic_seconds=dur_in_traffic_sec,
+            duration_in_traffic_text=dur_traffic_text,
+            traffic_condition=traffic_cond,
+            traffic_delay_seconds=delay_sec,
+            traffic_delay_text=delay_text,
             overview_polyline=overview_polyline,
             route_coordinates=route_coords,
             steps=steps,
+            traffic_segments=traffic_segments,
         )

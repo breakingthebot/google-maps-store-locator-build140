@@ -5,11 +5,12 @@
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Union
 import httpx
 from src.config import settings
 from src.models.directions import DirectionsResult, RouteStep, TravelMode
 from src.models.geo import Coordinates, GeocodeResult
+from src.models.traffic import TrafficModel
 from src.services.mock_maps import MockGoogleMapsService
 from src.utils.polyline import decode_polyline
 
@@ -144,24 +145,49 @@ class GoogleMapsService:
         mode: TravelMode = TravelMode.DRIVING,
         origin_name: str = "Origin",
         destination_name: str = "Destination",
+        departure_time: Optional[Union[str, int]] = None,
+        traffic_model: TrafficModel = TrafficModel.BEST_GUESS,
     ) -> DirectionsResult:
-        """Fetch turn-by-turn navigation directions between two points."""
+        """Fetch turn-by-turn navigation directions with optional traffic modeling between two points."""
+        from src.services.traffic_engine import TrafficEngine
+
         if not self.is_live:
             return self.mock_service.directions(
-                origin, destination, mode, origin_name, destination_name
+                origin=origin,
+                destination=destination,
+                mode=mode,
+                origin_name=origin_name,
+                destination_name=destination_name,
+                departure_time=departure_time,
+                traffic_model=traffic_model,
             )
 
         try:
-            params = {
+            params: dict[str, Any] = {
                 "origin": f"{origin.latitude},{origin.longitude}",
                 "destination": f"{destination.latitude},{destination.longitude}",
                 "mode": mode.value,
             }
+            if departure_time is not None:
+                if str(departure_time).strip().lower() == "now":
+                    params["departure_time"] = "now"
+                else:
+                    dec_h, _, dt = TrafficEngine.parse_departure_time(departure_time)
+                    params["departure_time"] = int(dt.timestamp())
+                if mode == TravelMode.DRIVING:
+                    params["traffic_model"] = traffic_model.value
+
             data = await self._execute_http_request(DIRECTIONS_API_URL, params)
             routes = data.get("routes", [])
             if not routes:
                 return self.mock_service.directions(
-                    origin, destination, mode, origin_name, destination_name
+                    origin=origin,
+                    destination=destination,
+                    mode=mode,
+                    origin_name=origin_name,
+                    destination_name=destination_name,
+                    departure_time=departure_time,
+                    traffic_model=traffic_model,
                 )
 
             route = routes[0]
@@ -172,13 +198,45 @@ class GoogleMapsService:
             dist_miles = round(dist_meters * 0.000621371, 2)
             dur_seconds = leg["duration"]["value"]
             dur_text = leg["duration"]["text"]
-            overview_polyline = route["overview_polyline"]["points"]
 
+            # Parse Google duration_in_traffic if returned
+            dur_in_traffic_sec = None
+            dur_traffic_text = None
+            traffic_delay_sec = 0
+            traffic_delay_text = "0 min"
+
+            if "duration_in_traffic" in leg:
+                dur_in_traffic_sec = leg["duration_in_traffic"]["value"]
+                dur_traffic_text = leg["duration_in_traffic"]["text"]
+                traffic_delay_sec = max(0, dur_in_traffic_sec - dur_seconds)
+                del_mins = round(traffic_delay_sec / 60)
+                traffic_delay_text = f"+{del_mins} mins" if del_mins > 1 else f"+{del_mins} min" if del_mins == 1 else "0 min"
+
+            overview_polyline = route["overview_polyline"]["points"]
             route_coords = decode_polyline(overview_polyline)
+
+            # Determine traffic condition
+            factor = (dur_in_traffic_sec / max(1, dur_seconds)) if dur_in_traffic_sec else 1.0
+            from src.models.traffic import TrafficCondition
+            if factor <= 1.15:
+                traffic_cond = TrafficCondition.CLEAR
+            elif factor <= 1.40:
+                traffic_cond = TrafficCondition.MODERATE
+            elif factor <= 1.70:
+                traffic_cond = TrafficCondition.HEAVY
+            else:
+                traffic_cond = TrafficCondition.SEVERE
+
+            traffic_segments = TrafficEngine.segment_route_traffic(
+                route_coords=route_coords,
+                total_distance_meters=dist_meters,
+                base_duration_seconds=dur_seconds,
+                overall_factor=factor,
+                overall_condition=traffic_cond,
+            )
 
             steps: list[RouteStep] = []
             for s in leg.get("steps", []):
-                # Clean html tags from instruction
                 raw_html = s.get("html_instructions", "")
                 import re
                 clean_instruction = re.sub("<[^<]+?>", " ", raw_html).strip()
@@ -199,6 +257,7 @@ class GoogleMapsService:
                             longitude=s["end_location"]["lng"],
                         ),
                         travel_mode=mode,
+                        traffic_condition=traffic_cond,
                     )
                 )
 
@@ -211,12 +270,24 @@ class GoogleMapsService:
                 distance_text=leg["distance"]["text"],
                 total_duration_seconds=dur_seconds,
                 duration_text=dur_text,
+                duration_in_traffic_seconds=dur_in_traffic_sec,
+                duration_in_traffic_text=dur_traffic_text,
+                traffic_condition=traffic_cond,
+                traffic_delay_seconds=traffic_delay_sec,
+                traffic_delay_text=traffic_delay_text,
                 overview_polyline=overview_polyline,
                 route_coordinates=route_coords,
                 steps=steps,
+                traffic_segments=traffic_segments,
             )
         except Exception as exc:
             logger.warning("Live directions API failed (%s). Using mock engine.", exc)
             return self.mock_service.directions(
-                origin, destination, mode, origin_name, destination_name
+                origin=origin,
+                destination=destination,
+                mode=mode,
+                origin_name=origin_name,
+                destination_name=destination_name,
+                departure_time=departure_time,
+                traffic_model=traffic_model,
             )

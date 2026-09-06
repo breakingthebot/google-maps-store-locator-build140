@@ -3,16 +3,18 @@
 # Connects to: src/models/, src/services/google_maps.py, src/services/store_repository.py
 # Created: 2026-09-06
 
-from typing import Optional
+from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from src.config import settings
 from src.models.directions import DirectionsResult, TravelMode
 from src.models.geo import Coordinates, GeocodeResult
 from src.models.store import Store, StoreCreate, StoreSummary
+from src.models.traffic import PredictiveDepartureResponse, TrafficCondition, TrafficModel
 from src.models.trip import TripPlanRequest, TripPlanResponse
 from src.services.google_maps import GoogleMapsService
 from src.services.store_repository import StoreRepository
+from src.services.traffic_engine import TrafficEngine
 from src.services.trip_exporter import TripExporter
 from src.services.trip_planner import TripPlannerService
 
@@ -230,6 +232,8 @@ async def get_directions(
     dest_lat: Optional[float] = Query(None, ge=-90.0, le=90.0),
     dest_lng: Optional[float] = Query(None, ge=-180.0, le=180.0),
     mode: TravelMode = Query(TravelMode.DRIVING),
+    departure_time: Optional[str] = Query(None, description="Departure time ('now', '08:30', '17:30', or epoch timestamp)"),
+    traffic_model: TrafficModel = Query(TrafficModel.BEST_GUESS, description="Traffic prediction model heuristic"),
     repo: StoreRepository = Depends(get_repository),
     maps: GoogleMapsService = Depends(get_maps_service),
 ) -> DirectionsResult:
@@ -266,6 +270,8 @@ async def get_directions(
         mode=mode,
         origin_name=origin_name,
         destination_name=dest_name,
+        departure_time=departure_time,
+        traffic_model=traffic_model,
     )
 
 
@@ -274,7 +280,7 @@ async def plan_multi_stop_trip(
     request: TripPlanRequest,
     planner: TripPlannerService = Depends(get_trip_planner),
 ) -> TripPlanResponse:
-    """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP waypoint sequencing."""
+    """Plan an optimized multi-stop trip visiting 2 to 12 stores with TSP waypoint sequencing and traffic delays."""
     try:
         return await planner.plan_trip(request)
     except ValueError as err:
@@ -288,9 +294,11 @@ async def preview_multi_stop_trip(
     round_trip: bool = Query(True, description="Whether to return to origin"),
     optimize: bool = Query(True, description="Whether to apply TSP optimization"),
     mode: TravelMode = Query(TravelMode.DRIVING, description="Travel mode"),
+    departure_time: Optional[str] = Query(None, description="Departure time e.g. '08:30', '17:30'"),
+    traffic_model: TrafficModel = Query(TrafficModel.BEST_GUESS, description="Traffic model heuristic"),
     planner: TripPlannerService = Depends(get_trip_planner),
 ) -> TripPlanResponse:
-    """Quick GET endpoint to preview an optimized multi-stop trip."""
+    """Quick GET endpoint to preview an optimized multi-stop trip with optional traffic modeling."""
     try:
         store_ids = [int(s.strip()) for s in stores.split(",") if s.strip()]
     except ValueError:
@@ -305,6 +313,8 @@ async def preview_multi_stop_trip(
         round_trip=round_trip,
         optimize=optimize,
         travel_mode=mode,
+        departure_time=departure_time,
+        traffic_model=traffic_model,
     )
     try:
         return await planner.plan_trip(req)
@@ -345,4 +355,53 @@ async def export_trip_url(
     """Generate universal cross-platform Google Maps mobile navigation URL."""
     url = TripExporter.generate_google_maps_url(plan)
     return {"google_maps_url": url}
+
+
+@router.get("/traffic/predict", response_model=PredictiveDepartureResponse)
+async def predict_traffic_departure(
+    origin: str = Query(..., description="Origin address, city, or coordinates"),
+    destination_store_id: Optional[int] = Query(None, description="Destination store ID"),
+    store_id: Optional[int] = Query(None, description="Alias for destination store ID"),
+    store_ids: Optional[str] = Query(None, description="Comma-separated store IDs for multi-stop trip"),
+    traffic_model: TrafficModel = Query(TrafficModel.BEST_GUESS, description="Traffic prediction model heuristic"),
+    mode: TravelMode = Query(TravelMode.DRIVING, description="Travel mode (default driving)"),
+    round_trip: bool = Query(True, description="Whether multi-stop returns to start"),
+    optimize: bool = Query(True, description="Whether to apply TSP optimization"),
+    planner: TripPlannerService = Depends(get_trip_planner),
+) -> PredictiveDepartureResponse:
+    """Evaluate departure times throughout the day and calculate optimal departure windows."""
+    target_store_id = destination_store_id if destination_store_id is not None else store_id
+    parsed_store_ids: Optional[List[int]] = None
+    if store_ids:
+        try:
+            parsed_store_ids = [int(s.strip()) for s in store_ids.split(",") if s.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="store_ids must be comma-separated integers.")
+
+    if target_store_id is None and not parsed_store_ids:
+        raise HTTPException(status_code=400, detail="Must provide destination_store_id or store_ids.")
+
+    try:
+        return await planner.predict_departures(
+            origin_str=origin,
+            destination_store_id=target_store_id,
+            store_ids=parsed_store_ids,
+            traffic_model=traffic_model,
+            mode=mode,
+            round_trip=round_trip,
+            optimize=optimize,
+        )
+    except ValueError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+
+
+@router.get("/traffic/overlay")
+async def get_traffic_overlay(
+    departure_time: Optional[str] = Query(None, description="Departure time or 'now'"),
+) -> dict:
+    """Return major arterial traffic vectors for map visual overlay."""
+    dec_h, _, _ = TrafficEngine.parse_departure_time(departure_time)
+    arterials = TrafficEngine.get_arterial_traffic_overlay(decimal_hour=dec_h)
+    return {"arterials": arterials}
+
 

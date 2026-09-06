@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12%20%7C%203.11%20%7C%203.10-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/Tests-68%20Passed%20(100%25)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-86%20Passed%20(100%25)-brightgreen.svg)]()
 
-Production-grade geospatial retail store locator, routing platform, and multi-stop trip planner. Powered by Google Maps Platform APIs (Geocoding, Directions, Places) and an offline-resilient simulation engine. Features Great-Circle Haversine proximity search, spatial bounding-box indexing, real-time operating hours evaluation ("Open Now", "Closing Soon"), Traveling Salesperson Problem (TSP) multi-stop route optimization, quantified mileage savings, cross-platform export (universal Google Maps mobile deep links, scannable QR codes, GPX 1.1, CSV driver manifests, physical print slips), customer rating aggregations, verified reviews, amenity filters, a Rich terminal CLI (`store-locator`), and an interactive single-page map interface.
+Production-grade geospatial retail store locator, routing platform, and multi-stop trip planner. Powered by Google Maps Platform APIs (Geocoding, Directions, Places) and an offline-resilient simulation engine. Features Great-Circle Haversine proximity search, spatial bounding-box indexing, real-time operating hours evaluation ("Open Now", "Closing Soon"), Traveling Salesperson Problem (TSP) multi-stop route optimization, real-time diurnal traffic congestion modeling, predictive departure time recommendations, color-coded route flow segments, quantified mileage savings, cross-platform export (universal Google Maps mobile deep links, scannable QR codes, GPX 1.1, CSV driver manifests, physical print slips), customer rating aggregations, verified reviews, amenity filters, a Rich terminal CLI (`store-locator`), and an interactive single-page map interface.
 
 ---
 
@@ -27,6 +27,7 @@ graph TD
         Repo["Store Repository (src/services/store_repository.py)"]
         TripPlanner["Trip Planner Service (src/services/trip_planner.py)"]
         TripExporter["Trip Exporter Service (src/services/trip_exporter.py)"]
+        TrafficEngine["Traffic & Departure Engine (src/services/traffic_engine.py)"]
     end
 
     subgraph Domain & Calculation Utilities
@@ -40,6 +41,9 @@ graph TD
     TripPlanner --> MapsClient
     TripPlanner --> Repo
     TripPlanner --> TripExporter
+    TripPlanner --> TrafficEngine
+    MapsClient --> TrafficEngine
+    MockMaps --> TrafficEngine
 
     MapsClient -.->|Live Key Configured| LiveAPI["Google Maps Platform (Geocoding / Directions)"]
     MapsClient -.->|No Key or Offline| MockMaps
@@ -60,6 +64,10 @@ graph TD
 
 - **Geospatial Proximity Search**: Computes exact Haversine great-circle distances in kilometers and miles. Leverages bounding-box pre-filtering for scalable SQL spatial searches.
 - **Multi-Stop Trip Planner & TSP Route Optimization**: Visit 2 to 12 stores in one trip. Uses spatial Traveling Salesperson algorithms (exact brute-force permutation for $N \le 8$, 2-opt heuristic for larger sets) to re-sequence waypoints and eliminate backtracking.
+- **Real-Time Traffic Modeling & Diurnal Congestion Curves**: Simulates metropolitan traffic flow curves with morning peak (8:30 AM, up to 1.62x factor), lunch bump (12:30 PM, 1.28x), evening rush (5:30 PM, up to 1.78x factor), and night off-peak. Computes `duration_in_traffic` under best guess, optimistic, and pessimistic heuristics.
+- **Color-Coded Traffic Segments**: Splits routes into contiguous segments color-coded by congestion level (Clear `#10b981`, Moderate `#f59e0b`, Heavy `#f97316`, Severe `#ef4444`) on both directions and multi-stop trips.
+- **Predictive Departure Time Advisor**: Analyzes canonical daily departure windows to recommend the optimal time to travel and quantify minutes saved versus peak congestion. Available via Web UI advisor drawer and `store-locator traffic` CLI.
+- **Live Arterial Traffic Map Layer**: Visual overlay showing congestion status and flow speeds across major metropolitan road corridors.
 - **Quantified Travel Savings**: Calculates exact mileage, drive time, and percentage distance reductions gained over naive visiting order.
 - **Universal Google Maps Mobile Navigation Deep Links**: Constructs official cross-platform URL schemes (`https://www.google.com/maps/dir/?api=1&...`) launching live voice GPS turn-by-turn navigation directly in the native Google Maps app on iOS and Android.
 - **Camera-Scannable QR Code Mobile Handoff**: Desktop users can scan an on-screen QR code with their phone camera to beam the optimized multi-stop route directly to their smartphone.
@@ -68,9 +76,9 @@ graph TD
 - **Real-Time Operating Hours & "Open Now" Engine**: Dynamically evaluates weekly 7-day schedules against the current local system clock. Displays "Open until X:XX PM", "Closing soon (Xm left)", and "Closed · Opens tomorrow at X:XX AM".
 - **Turn-by-Turn Navigation & Polyline Routing**: Calculates turn-by-turn routing steps with distances, durations, and Google Maps encoded polylines across Driving, Walking, Bicycling, and Transit modes.
 - **Zero-Key Offline Mock Simulation Engine**: Runs out of the box with zero external dependencies. Features deterministic geocoding for cities, postal codes, and landmarks, and simulated turn-by-turn routing when no Google Cloud billing key is provided.
-- **Rich Command-Line Suite (`store-locator`)**: Complete terminal tool for proximity searching, multi-stop trip planning (`store-locator trip`), store profile inspection, routing, route export (`--export-gpx`, `--export-csv`), and server execution.
-- **Interactive Responsive Map Interface**: Standalone web UI with custom map pins color-coded by open/closed status, user radar location, search autocomplete, radius controls, multi-amenity filter chips, floating multi-stop trip drawer, and store details modal.
-- **Automated Verification**: Comprehensive 68-test suite covering spatial geometry, operating hours boundary conditions, mock engines, TSP route optimization, route export, REST endpoints, and CLI flows.
+- **Rich Command-Line Suite (`store-locator`)**: Complete terminal tool for proximity searching, multi-stop trip planning (`store-locator trip`), departure advisory (`store-locator traffic`), store profile inspection, routing, route export (`--export-gpx`, `--export-csv`), and server execution.
+- **Interactive Responsive Map Interface**: Standalone web UI with custom map pins color-coded by open/closed status, user radar location, search autocomplete, radius controls, multi-amenity filter chips, traffic layer toggle, departure advisor popover, floating multi-stop trip drawer, and store details modal.
+- **Automated Verification**: Comprehensive 86-test suite covering spatial geometry, operating hours boundary conditions, mock engines, TSP route optimization, traffic calculation curves, route export, REST endpoints, and CLI flows.
 
 ---
 
@@ -132,14 +140,20 @@ store-locator search --address "San Francisco" --radius 20 --open-now
 # View detailed store profile, weekly schedule, amenities, and reviews
 store-locator get 1
 
-# Calculate turn-by-turn route
-store-locator directions --from-loc "760 Market St" --to-store 1 --mode driving
+# Calculate turn-by-turn route with rush hour traffic delay
+store-locator directions --from-loc "760 Market St" --to-store 1 --mode driving -d evening_rush --traffic-model pessimistic
 
-# Plan an optimized multi-stop trip visiting stores 1, 2, and 4
-store-locator trip --origin "Market St" -s 1 -s 2 -s 4 --round-trip
+# Plan an optimized multi-stop trip visiting stores 1, 2, and 4 with morning rush traffic
+store-locator trip --origin "Market St" -s 1 -s 2 -s 4 --round-trip -d morning_rush
 
 # Plan trip and export GPX file + CSV driver manifest
 store-locator trip --origin "Market St" -s 1 -s 3 -s 5 --export-gpx my_route.gpx --export-csv manifest.csv
+
+# Analyze diurnal traffic departure windows for single store
+store-locator traffic --from-loc "760 Market St" --to-store 1
+
+# Analyze optimal departure windows for multi-stop itinerary
+store-locator traffic --from-loc "760 Market St" -s 1 -s 2 -s 3
 
 # List registered stores
 store-locator list --limit 10
@@ -157,12 +171,15 @@ store-locator list --limit 10
 | `GET` | `/api/stores/search` | Spatial proximity search with amenity & open-now filters |
 | `GET` | `/api/stores/{id}` | Store details with full weekly schedule and customer reviews |
 | `POST` | `/api/stores` | Register a new retail store location |
-| `GET` | `/api/directions` | Single turn-by-turn navigation route, steps, and polyline |
-| `POST` | `/api/trip/plan` | Plan multi-stop trip with TSP waypoint optimization and savings |
-| `GET` | `/api/trip/preview` | Quick multi-stop preview endpoint |
+| `GET` | `/api/directions` | Navigation route with steps, polyline, and real-time traffic delay |
+| `POST` | `/api/trip/plan` | Plan multi-stop trip with TSP sequencing, mileage savings, and traffic |
+| `GET` | `/api/trip/preview` | Quick multi-stop preview endpoint with traffic parameters |
+| `GET` | `/api/traffic/predict` | Evaluate departure windows throughout day and calculate optimal times |
+| `GET` | `/api/traffic/overlay` | Return major arterial traffic vectors for visual map layer overlay |
 | `POST` | `/api/trip/export/gpx` | Export trip itinerary as GPS Exchange Format (GPX 1.1) XML |
 | `POST` | `/api/trip/export/csv` | Export trip itinerary as tabular CSV driver delivery manifest |
 | `POST` | `/api/trip/export/url` | Generate universal Google Maps mobile navigation deep link |
+
 
 ---
 

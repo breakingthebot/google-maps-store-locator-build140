@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-06
+
+### Added
+- **Real-Time Traffic Engine & Diurnal Congestion Modeling** (`src/models/traffic.py`, `src/services/traffic_engine.py`):
+  - Created `TrafficEngine` modeling diurnal rush hour congestion curves: morning peak (07:00 - 09:30, peaking at 8:30 AM with up to 1.62x multiplier), midday lunch bump (11:30 - 13:30, 1.28x), evening rush peak (16:30 - 18:45, peaking at 5:30 PM with up to 1.78x multiplier), and night off-peak (1.0x).
+  - Implemented `TrafficModel` heuristics (`best_guess`, `optimistic`, `pessimistic`) adjusting delay factors.
+  - Added route segmentation algorithm (`segment_route_traffic`) dividing routes into contiguous color-coded segments: Clear (`#10b981`), Moderate (`#f59e0b`), Heavy (`#f97316`), and Severe (`#ef4444`).
+  - Implemented 5-window canonical predictive departure time matrix analyzer (`predict_departure_matrix`).
+  - Added metropolitan arterial traffic corridor catalog (`get_arterial_traffic_overlay`) with speed factors and coordinates.
+- **Traffic Integration in Directions & Trip Planning** (`src/services/google_maps.py`, `src/services/mock_maps.py`, `src/services/trip_planner.py`):
+  - Updated single-store navigation to evaluate departure times, compute `duration_in_traffic`, format delay texts, and compile color-coded traffic segments.
+  - Enhanced multi-stop trip planner to account for cumulative traffic delays across all route legs and attach leg-level delay metrics.
+  - Added `predict_departures` supporting both single-destination and multi-stop itineraries.
+- **REST Endpoints for Traffic & Predictive Departure** (`src/api/routes.py`):
+  - Updated `GET /api/directions` and `POST /api/trip/plan` to accept `departure_time` and `traffic_model`.
+  - Added `GET /api/traffic/predict` returning comparative departure windows, best/worst windows, and minutes saved.
+  - Added `GET /api/traffic/overlay` returning real-time arterial traffic vectors.
+- **CLI Commands for Traffic** (`src/cli/main.py`):
+  - Added `store-locator traffic` command supporting `--to-store` for single locations and `-s/--store` (multiple) for multi-stop departure window analysis.
+  - Extended `store-locator directions` and `store-locator trip` with `-d/--departure-time` and `--traffic-model` options.
+- **Frontend Traffic Layer & Departure Advisors** (`src/static/index.html`, `src/static/styles.css`, `src/static/app.js`):
+  - Added `#chip-traffic-layer` filter chip toggling real-time arterial congestion overlay lines on the interactive SVG canvas map.
+  - Added color-coded polyline rendering displaying green/amber/orange/red traffic flow along active routes.
+  - Added Departure Time and Traffic Model selectors to directions drawer and floating trip bar.
+  - Added Predictive Departure Advisor drawers with horizontal comparison bars for directions and trip itineraries.
+  - Added traffic flow status banners and delay badges in directions drawer, trip modal, and map legend.
+- **Automated Verification** (`tests/test_traffic_engine.py`, `tests/test_traffic_api.py`, `tests/test_cli.py`):
+  - Added 18 new automated tests covering diurnal curves, departure parsing, segment color-coding, predictive matrix generation, traffic API routes, and traffic CLI commands, bringing total passing test suite to 86 tests (100% pass rate).
+
 ## [1.2.0] - 2026-09-06
 
 ### Added
